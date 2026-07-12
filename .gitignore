@@ -1,0 +1,39 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# backend (.NET)
+B2B.API/storage/**
+!B2B.API/storage/.gitkeep
+B2B.API/bin/
+B2B.API/obj/
+B2B.API/appsettings.Development.json
+!B2B.API/appsettings.Development.json.example
+B2B.API/appsettings.Production.json
+!B2B.API/appsettings.Production.json.example
+*.user
+.vs/
+B2B.Database/bin/
+B2B.Database/obj/
+B2B.Database/*.dbmdl
+B2B.Database/*.jfm
+B2B.Configuration/bin/
+B2B.Configuration/obj/
+B2B.Configuration/ConnectionStringValues.cs
+!B2B.Configuration/ConnectionStringValues.cs.example
+
+# expo / B2B-Web
+B2B-Web/.expo/
+B2B-Web/dist/
+B2B-Web/web-build/
+B2B-Web/*.jks
+B2B-Web/*.p8
+B2B-Web/*.p12
+B2B-Web/*.key
+B2B-Web/*.mobileprovision
+
+# misc
+.DS_Store
+*.log
+coverage/

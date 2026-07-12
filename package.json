@@ -1,0 +1,19 @@
+{
+  "name": "sg-b2b",
+  "private": true,
+  "workspaces": [
+    "B2B-Web"
+  ],
+  "scripts": {
+    "dev:server": "dotnet run --project B2B.API",
+    "dev:app": "npm run web -w B2B-Web",
+    "lint": "npm run lint -w B2B-Web",
+    "typecheck": "npm run typecheck -w B2B-Web"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "unrs-resolver@1.12.2": true
+  }
+}

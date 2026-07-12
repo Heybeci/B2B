@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="B2B.API/B2B.API.csproj" />
+  <Project Path="B2B.Configuration/B2B.Configuration.csproj" />
+  <Project Path="B2B.Database/B2B.Database.sqlproj" Id="a3bc5395-d0c3-4ca3-b4a7-39cde5546212">
+    <Build />
+    <Deploy />
+  </Project>
+</Solution>

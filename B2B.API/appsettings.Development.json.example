@@ -1,0 +1,25 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Jwt": {
+    "AccessSecret": "<base64 32-byte random secret>",
+    "RefreshSecret": "<base64 32-byte random secret>",
+    "AccessTtlMinutes": 20,
+    "RefreshTtlDays": 30,
+    "PasswordResetTtlMinutes": 30
+  },
+  "Storage": {
+    "Root": "./storage"
+  },
+  "CorsOrigins": ["http://localhost:8081", "http://localhost:19006", "http://localhost:8082"],
+  "SeedAdmin": {
+    "Username": "admin",
+    "Email": "admin@stonegroup.com",
+    "Password": "<initial admin password>",
+    "DisplayName": "Yönetici"
+  }
+}

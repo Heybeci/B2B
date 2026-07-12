@@ -1,0 +1,9 @@
+namespace B2B.Configuration;
+
+// Real values live in ConnectionStringValues.cs (gitignored, not committed).
+// Copy this file to ConnectionStringValues.cs and fill in the real secrets.
+internal static class ConnectionStringValues
+{
+    public const string Dev = "Server=localhost\\SQLEXPRESS;Database=SgB2bHotelMedia;Integrated Security=True;TrustServerCertificate=True;Encrypt=True";
+    public const string Prod = "Server=<prod sql server>;Database=SgB2bHotelMedia;User ID=<sql login>;Password=<sql password>;TrustServerCertificate=True;Encrypt=True";
+}
