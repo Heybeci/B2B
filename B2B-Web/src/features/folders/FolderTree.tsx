@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ActionMenu } from "../../components/ui/ActionMenu";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { ChevronIcon, DownloadIcon, TrashIcon } from "../../components/ui/IconGlyphs";
+import { ChevronIcon, DownloadIcon, KebabIcon, MoveIcon, PencilIcon, TrashIcon } from "../../components/ui/IconGlyphs";
+import { PromptDialog } from "../../components/ui/PromptDialog";
+import { Tooltip } from "../../components/ui/Tooltip";
 import { Body } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { apiClient } from "../../lib/api/client";
@@ -10,6 +13,8 @@ import * as downloadFile from "../../lib/download/downloadFile";
 import { ROW_SHADOW } from "../../theme/glass";
 import { useBrowseHotel } from "../hotels/hooks";
 import type { FolderDto } from "../hotels/types";
+import { FolderPickerModal } from "./FolderPickerModal";
+import { useMoveFolder, useRenameFolder } from "./hooks";
 
 // Brass is the app's one accent color for "selected"/active state.
 const ACCENT_TEXT = "text-brass-700";
@@ -48,6 +53,8 @@ export function FolderTree({
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [downloadingKey, setDownloadingKey] = useState<number | "root" | null>(null);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<{ id: number; name: string } | null>(null);
+  const [pendingRenameFolder, setPendingRenameFolder] = useState<{ id: number; name: string } | null>(null);
+  const [pendingMoveFolder, setPendingMoveFolder] = useState<{ id: number; name: string } | null>(null);
 
   // Whatever folder is selected (e.g. from a deep link), keep its ancestor
   // chain expanded so the selected node is always visible in the tree.
@@ -107,6 +114,22 @@ export function FolderTree({
     },
   });
 
+  // Rename/move come from hooks.ts (unlike delete above) because those hooks
+  // already do the wide ["hotels", hotelId] invalidation this tree needs.
+  const renameFolder = useRenameFolder(hotelId);
+  const moveFolder = useMoveFolder(hotelId);
+
+  // Reset the mutations when (re)opening a dialog so a stale error/pending
+  // state from a previous attempt doesn't bleed into the next one.
+  const requestRenameFolder = (folder: { id: number; name: string }) => {
+    renameFolder.reset();
+    setPendingRenameFolder(folder);
+  };
+  const requestMoveFolder = (folder: { id: number; name: string }) => {
+    moveFolder.reset();
+    setPendingMoveFolder(folder);
+  };
+
   const confirmDeleteFolder = () => {
     if (!pendingDeleteFolder) return;
     const { id } = pendingDeleteFolder;
@@ -147,6 +170,8 @@ export function FolderTree({
           downloadingKey={downloadingKey}
           isAdmin={isAdmin}
           onDeleteRequest={setPendingDeleteFolder}
+          onRenameRequest={requestRenameFolder}
+          onMoveRequest={requestMoveFolder}
         />
       ))}
 
@@ -159,6 +184,41 @@ export function FolderTree({
         loading={deleteFolder.isPending}
         onCancel={() => setPendingDeleteFolder(null)}
         onConfirm={confirmDeleteFolder}
+      />
+
+      <PromptDialog
+        visible={pendingRenameFolder !== null}
+        title={t("folder.renameFolderTitle")}
+        initialValue={pendingRenameFolder?.name ?? ""}
+        placeholder={t("folder.renamePlaceholder")}
+        submitLabel={t("common.save")}
+        cancelLabel={t("common.cancel")}
+        loading={renameFolder.isPending}
+        onCancel={() => setPendingRenameFolder(null)}
+        onSubmit={(name) => {
+          if (!pendingRenameFolder) return;
+          renameFolder.mutate(
+            { folderId: pendingRenameFolder.id, name },
+            { onSuccess: () => setPendingRenameFolder(null) },
+          );
+        }}
+      />
+
+      <FolderPickerModal
+        visible={pendingMoveFolder !== null}
+        title={t("folder.moveFolderTitle")}
+        hotelId={hotelId}
+        excludeFolderId={pendingMoveFolder?.id}
+        loading={moveFolder.isPending}
+        error={moveFolder.isError ? t("folder.moveError") : null}
+        onCancel={() => setPendingMoveFolder(null)}
+        onSelect={(targetFolderId) => {
+          if (!pendingMoveFolder) return;
+          moveFolder.mutate(
+            { folderId: pendingMoveFolder.id, newParentFolderId: targetFolderId },
+            { onSuccess: () => setPendingMoveFolder(null) },
+          );
+        }}
       />
     </View>
   );
@@ -176,6 +236,8 @@ function FolderTreeNode({
   downloadingKey,
   isAdmin,
   onDeleteRequest,
+  onRenameRequest,
+  onMoveRequest,
 }: {
   hotelId: number;
   folder: FolderDto;
@@ -188,6 +250,8 @@ function FolderTreeNode({
   downloadingKey: number | "root" | null;
   isAdmin?: boolean;
   onDeleteRequest: (folder: { id: number; name: string }) => void;
+  onRenameRequest: (folder: { id: number; name: string }) => void;
+  onMoveRequest: (folder: { id: number; name: string }) => void;
 }) {
   const isExpanded = expanded.has(folder.id);
   const { data } = useBrowseHotel(hotelId, folder.id, isExpanded);
@@ -205,6 +269,8 @@ function FolderTreeNode({
         onDownload={() => onDownload(folder.id)}
         downloading={downloadingKey === folder.id}
         onDelete={isAdmin ? () => onDeleteRequest({ id: folder.id, name: folder.name }) : undefined}
+        onRename={isAdmin ? () => onRenameRequest({ id: folder.id, name: folder.name }) : undefined}
+        onMove={isAdmin ? () => onMoveRequest({ id: folder.id, name: folder.name }) : undefined}
       />
       {isExpanded
         ? children.map((child) => (
@@ -221,6 +287,8 @@ function FolderTreeNode({
               downloadingKey={downloadingKey}
               isAdmin={isAdmin}
               onDeleteRequest={onDeleteRequest}
+              onRenameRequest={onRenameRequest}
+              onMoveRequest={onMoveRequest}
             />
           ))
         : null}
@@ -288,6 +356,8 @@ function TreeRow({
   onDownload,
   downloading,
   onDelete,
+  onRename,
+  onMove,
 }: {
   label: string;
   depth: number;
@@ -298,7 +368,10 @@ function TreeRow({
   onDownload: () => void;
   downloading?: boolean;
   onDelete?: () => void;
+  onRename?: () => void;
+  onMove?: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <Pressable
       onPress={onPress}
@@ -314,6 +387,20 @@ function TreeRow({
           style={{ backgroundColor: ACCENT_HEX }}
         />
       ) : null}
+      {/* Download icon — always visible, at the start of the row (before chevron) */}
+      <Tooltip label={t("folder.download")}>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            if (!downloading) onDownload();
+          }}
+          hitSlop={6}
+          className="w-6 h-6 rounded-full items-center justify-center"
+          style={{ backgroundColor: ACCENT_HEX }}
+        >
+          {downloading ? <ActivityIndicator size="small" color="#fff" /> : <DownloadIcon color="#fff" />}
+        </Pressable>
+      </Tooltip>
       {onTogglePress ? (
         <Pressable
           onPress={(e) => {
@@ -332,29 +419,32 @@ function TreeRow({
       <Body numberOfLines={1} className={`flex-1 ${selected ? `${ACCENT_TEXT} font-semibold` : "text-ink-700"}`}>
         {label}
       </Body>
-      {onDelete ? (
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          hitSlop={6}
-          className="w-6 h-6 rounded-full items-center justify-center bg-red-600/90 mr-1.5"
-        >
-          <TrashIcon />
-        </Pressable>
+      {/* Admin-only actions (rename/move/delete) live in one kebab-triggered
+          menu instead of three always-visible icons, so the row's chrome no
+          longer squeezes the folder name into an ellipsis. Download stays a
+          standalone icon: it's the one action shown to everyone (public side
+          included), where there's no crowding to solve. */}
+      {onRename || onMove || onDelete ? (
+        <Tooltip label={t("common.actions")}>
+          <ActionMenu
+            items={[
+              ...(onRename
+                ? [{ key: "rename", label: t("common.rename"), icon: <PencilIcon color="#3A342B" />, onPress: onRename }]
+                : []),
+              ...(onMove
+                ? [{ key: "move", label: t("common.move"), icon: <MoveIcon color="#3A342B" />, onPress: onMove }]
+                : []),
+              ...(onDelete
+                ? [{ key: "delete", label: t("common.delete"), icon: <TrashIcon color="#dc2626" />, destructive: true, onPress: onDelete }]
+                : []),
+            ]}
+          >
+            <View className="w-6 h-6 rounded-full items-center justify-center bg-black/50">
+              <KebabIcon />
+            </View>
+          </ActionMenu>
+        </Tooltip>
       ) : null}
-      <Pressable
-        onPress={(e) => {
-          e.stopPropagation();
-          if (!downloading) onDownload();
-        }}
-        hitSlop={6}
-        className="w-6 h-6 rounded-full items-center justify-center"
-        style={{ backgroundColor: ACCENT_HEX }}
-      >
-        {downloading ? <ActivityIndicator size="small" color="#fff" /> : <DownloadIcon color="#fff" />}
-      </Pressable>
     </Pressable>
   );
 }

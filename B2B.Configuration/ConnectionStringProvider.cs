@@ -10,9 +10,9 @@ public interface IConnectionStringProvider
 
 // Picks between two hardcoded connection strings (ConnectionStringValues.Dev/
 // .Prod — gitignored, see ConnectionStringValues.cs.example) based on which
-// hostname the request came in on: the same binary answers both
-// http://localhost/b2b/b2b.api (-> Dev) and http://b2b/b2b.api (-> Prod), since
-// both host headers can route to this app. Outside an HTTP
+// hostname the request came in on: the same binary answers
+// http://dev.b2b/b2b.api (-> Dev, local IIS test site) and http://b2b/b2b.api
+// (-> Prod), since both host headers can route to this app. Outside an HTTP
 // request (e.g. the `seed` CLI command), there's no request host to read, so
 // it falls back to ASPNETCORE_ENVIRONMENT instead.
 public class ConnectionStringProvider(IHostEnvironment environment, IHttpContextAccessor httpContextAccessor) : IConnectionStringProvider
@@ -23,6 +23,7 @@ public class ConnectionStringProvider(IHostEnvironment environment, IHttpContext
         var isProd = host switch
         {
             "localhost" => false,
+            "dev.b2b" => false,
             "b2b" => true,
             _ => environment.IsProduction(),
         };

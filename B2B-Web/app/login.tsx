@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
 import { Button } from "../src/components/ui/Button";
 import { Footer } from "../src/components/ui/Footer";
@@ -19,6 +19,7 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const passwordRef = useRef<TextInput>(null);
 
   const onSubmit = async () => {
     setError(null);
@@ -102,13 +103,20 @@ export default function LoginScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             placeholder={t("login.usernamePlaceholder")}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            editable={!loading}
           />
           <Input
+            ref={passwordRef}
             label={t("common.password")}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             placeholder={t("login.passwordPlaceholder")}
+            returnKeyType="done"
+            onSubmitEditing={onSubmit}
+            editable={!loading}
           />
 
           <Pressable

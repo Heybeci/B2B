@@ -65,7 +65,7 @@ export default function AdminLayout() {
       <View className="flex-1">
         <View className="flex-1 lg:flex-row">
           {/* Wide screens: vertical nav sidebar, user info + logout pinned to its bottom */}
-          <View className="hidden lg:flex lg:w-56 lg:border-r lg:border-ink-900/10 px-3 py-6">
+          <View className="hidden lg:flex lg:w-48 lg:border-r lg:border-ink-900/10 px-3 py-6">
             <View className="flex-1 gap-1">{navLinks}</View>
             <View className="gap-3 pt-4 border-t border-ink-900/10 px-3">
               <LanguageSwitcher />

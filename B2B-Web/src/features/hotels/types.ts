@@ -7,6 +7,7 @@ export interface FileDto {
   mimeType: string;
   sizeBytes: number;
   createdAt: string;
+  hasThumbnail?: boolean;
 }
 
 export interface FolderDto {

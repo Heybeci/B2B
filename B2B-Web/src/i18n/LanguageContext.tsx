@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { languageStorage } from "./languageStorage";
 import { DEFAULT_LOCALE, translations, type Locale } from "./translations";
 
-type TranslateFn = (key: keyof (typeof translations)["tr"], vars?: Record<string, string | number>) => string;
+export type TranslateFn = (key: keyof (typeof translations)["tr"], vars?: Record<string, string | number>) => string;
 
 interface LanguageContextValue {
   locale: Locale;

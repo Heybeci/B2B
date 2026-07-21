@@ -11,7 +11,9 @@ namespace B2B.API.Controllers;
 [Route("api/files")]
 public class FilesController(FileService fileService, StorageService storage, AppDbContext db) : ControllerBase
 {
-    private async Task<(MediaFile file, string path)> ResolveAccessibleFileAsync(int id)
+    // Enforces the public-access rule (anonymous callers only reach files of
+    // published hotels); authenticated admins/staff see everything.
+    private async Task<MediaFile> ResolveAuthorizedFileAsync(int id)
     {
         var file = await fileService.GetOrThrowAsync(id);
 
@@ -21,6 +23,12 @@ public class FilesController(FileService fileService, StorageService storage, Ap
             if (hotel is null || !hotel.IsPublished) throw ApiException.NotFound("Dosya bulunamadı");
         }
 
+        return file;
+    }
+
+    private async Task<(MediaFile file, string path)> ResolveAccessibleFileAsync(int id)
+    {
+        var file = await ResolveAuthorizedFileAsync(id);
         var path = storage.AbsoluteFilePath(file.HotelId, file.StoredFileName);
         if (!System.IO.File.Exists(path)) throw ApiException.NotFound("Dosya sunucuda bulunamadı");
         return (file, path);
@@ -46,6 +54,23 @@ public class FilesController(FileService fileService, StorageService storage, Ap
         return PhysicalFile(path, file.MimeType, enableRangeProcessing: true);
     }
 
+    // Web-optimized 400px JPEG thumbnail for image files. 404 when the file has
+    // no thumbnail (non-image, or an image uploaded before the feature) — the
+    // frontend falls back to /download in that case. Long cache: a thumbnail's
+    // bytes never change for a given file id (a re-upload gets a new id).
+    [HttpGet("{id:int}/thumbnail")]
+    public async Task<IActionResult> Thumbnail(int id)
+    {
+        var file = await ResolveAuthorizedFileAsync(id);
+        if (file.ThumbnailFileName is null) throw ApiException.NotFound("Küçük resim bulunamadı");
+
+        var path = storage.AbsoluteThumbnailPath(file.HotelId, file.ThumbnailFileName);
+        if (!System.IO.File.Exists(path)) throw ApiException.NotFound("Küçük resim sunucuda bulunamadı");
+
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        return PhysicalFile(path, "image/jpeg", enableRangeProcessing: true);
+    }
+
     [RequirePermission(Permissions.HotelsManage)]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
@@ -53,6 +78,14 @@ public class FilesController(FileService fileService, StorageService storage, Ap
         await fileService.DeleteAsync(id);
         return NoContent();
     }
+
+    [RequirePermission(Permissions.HotelsManage)]
+    [HttpPatch("{id:int}")]
+    public Task<FileDto> Rename(int id, RenameFileRequest input) => fileService.RenameAsync(id, input.OriginalName);
+
+    [RequirePermission(Permissions.HotelsManage)]
+    [HttpPatch("{id:int}/move")]
+    public Task<FileDto> Move(int id, MoveFileRequest input) => fileService.MoveAsync(id, input.FolderId);
 
     [RequirePermission(Permissions.HotelsManage)]
     [HttpPost("bulk-delete")]

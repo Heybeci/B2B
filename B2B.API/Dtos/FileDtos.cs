@@ -10,7 +10,11 @@ public record FileDto(
     string OriginalName,
     string MimeType,
     long SizeBytes,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    // True when a web-optimized thumbnail exists (images uploaded after this
+    // feature). The frontend builds the URL itself as
+    // `${API_URL}/files/${id}/thumbnail`; false → fall back to /download.
+    bool HasThumbnail
 );
 
 public record ZipDownloadRequest(
@@ -23,3 +27,7 @@ public record ZipDownloadRequest(
 public record BulkDeleteFilesRequest(
     [Required] List<int> FileIds
 );
+
+public record RenameFileRequest([Required, MaxLength(260)] string OriginalName);
+
+public record MoveFileRequest(int? FolderId);

@@ -1,7 +1,14 @@
 import axios from "axios";
 import { tokenStorage } from "../auth/tokenStorage";
+import { resolveApiUrl } from "./apiUrl";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost/b2b/b2b.api/api";
+// Single source of truth for the API address. On web this is resolved at
+// RUNTIME from the page hostname (see apiUrl.web.ts — same dist/ works on
+// dev.b2b and b2b); on native it stays the build-time EXPO_PUBLIC_API_URL
+// (see apiUrl.native.ts). Module evaluation is safe in both the browser
+// (window exists before any bundle code runs) and the Node.js prerender
+// (guarded in apiUrl.web.ts).
+export const API_URL = resolveApiUrl();
 
 export const apiClient = axios.create({ baseURL: API_URL });
 

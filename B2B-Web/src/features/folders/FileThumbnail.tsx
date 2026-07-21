@@ -7,7 +7,11 @@ import { fileTypeLabel } from "../../lib/format";
 import { colors } from "../../theme/colors";
 import type { FileDto } from "../hotels/types";
 
-export function fileThumbnailUrl(file: FileDto): string {
+export function fileThumbnailUrl(file: FileDto, preferThumbnail = true): string {
+  // Use thumbnail endpoint if available (hasThumbnail === true), otherwise fall back to download
+  if (preferThumbnail && file.hasThumbnail) {
+    return `${API_URL}/files/${file.id}/thumbnail`;
+  }
   return `${API_URL}/files/${file.id}/download`;
 }
 
@@ -58,6 +62,13 @@ export function FileThumbnail({ file }: { file: FileDto }) {
         className="w-full h-full"
         contentFit="cover"
         transition={150}
+        onError={(error) => {
+          // Log thumbnail load error, but this is non-fatal — expo-image will
+          // just show its fallback (or remain blank if none specified).
+          // For now, we just log it; full-resolution fallback would require
+          // state + re-render which is not worth the complexity here.
+          console.warn(`Thumbnail load failed for file ${file.id}:`, error);
+        }}
       />
     );
   }

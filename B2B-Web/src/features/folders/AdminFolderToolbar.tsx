@@ -8,8 +8,9 @@ import { Input } from "../../components/ui/Input";
 import { Body, Muted, SectionTitle } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { appendFileToFormData } from "../../lib/upload/appendFile";
-import { type ConflictChoice, uploadDroppedItems } from "./dragDropUpload";
+import { type ConflictChoice, type UploadProgressItem, uploadDroppedItems } from "./dragDropUpload";
 import { useCreateFolder, useDeleteFolder, useUploadFiles } from "./hooks";
+import { UploadProgressModal } from "./UploadProgressModal";
 
 interface AdminFolderToolbarProps {
   hotelId: number;
@@ -32,6 +33,9 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
     count: number;
     resolve: (choice: ConflictChoice) => void;
   } | null>(null);
+  const [uploadItems, setUploadItems] = useState<UploadProgressItem[]>([]);
+  const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [uploadFinished, setUploadFinished] = useState(false);
   const dropZoneRef = useRef<View>(null);
 
   const submitNewFolder = async () => {
@@ -81,18 +85,26 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
       setIsDragOver(false);
       if (!e.dataTransfer) return;
       setDropping(true);
+      setUploadItems([]);
+      setUploadFinished(false);
+      setUploadModalVisible(true);
       uploadDroppedItems({
         hotelId,
         targetFolderId: folderId,
         dataTransfer: e.dataTransfer,
         confirmConflicts: (count) =>
           new Promise<ConflictChoice>((resolve) => setConflictPrompt({ count, resolve })),
+        onProgress: setUploadItems,
+        t,
       })
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ["hotels", hotelId] });
         })
         .catch((err) => console.error(err))
-        .finally(() => setDropping(false));
+        .finally(() => {
+          setDropping(false);
+          setUploadFinished(true);
+        });
     };
 
     node.addEventListener("dragover", onDragOver);
@@ -103,7 +115,7 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
       node.removeEventListener("dragleave", onDragLeave);
       node.removeEventListener("drop", onDrop);
     };
-  }, [hotelId, folderId, queryClient]);
+  }, [hotelId, folderId, queryClient, t]);
 
   return (
     <View className="gap-3 py-4 mb-2">
@@ -203,6 +215,13 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
           ) : null}
         </View>
       </Modal>
+
+      <UploadProgressModal
+        visible={uploadModalVisible}
+        items={uploadItems}
+        finished={uploadFinished}
+        onClose={() => setUploadModalVisible(false)}
+      />
     </View>
   );
 }

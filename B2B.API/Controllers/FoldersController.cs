@@ -17,6 +17,9 @@ public class FoldersController(FolderService folderService) : ControllerBase
     [HttpPatch("{id:int}")]
     public Task<FolderDto> Rename(int id, RenameFolderRequest input) => folderService.RenameAsync(id, input.Name);
 
+    [HttpPatch("{id:int}/move")]
+    public Task<FolderDto> Move(int id, MoveFolderRequest input) => folderService.MoveAsync(id, input.NewParentFolderId);
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

@@ -132,6 +132,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(f => f.OriginalName).HasMaxLength(260);
             e.Property(f => f.StoredFileName).HasMaxLength(120);
+            e.Property(f => f.ThumbnailFileName).HasMaxLength(120);
             e.Property(f => f.MimeType).HasMaxLength(120);
             e.Property(f => f.Kind).HasConversion(fileKindConverter).HasMaxLength(10);
             e.HasIndex(f => new { f.HotelId, f.FolderId });

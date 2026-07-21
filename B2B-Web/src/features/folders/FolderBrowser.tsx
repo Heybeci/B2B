@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { DownloadIcon, EyeIcon } from "../../components/ui/IconGlyphs";
-import { Body, Muted, SectionTitle } from "../../components/ui/Typography";
+import { DownloadIcon, EyeIcon, MoveIcon, PencilIcon } from "../../components/ui/IconGlyphs";
+import { PromptDialog } from "../../components/ui/PromptDialog";
+import { Tooltip } from "../../components/ui/Tooltip";
+import { Muted, SectionTitle } from "../../components/ui/Typography";
 import { Card } from "../../components/ui/Card";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { ROW_SHADOW } from "../../theme/glass";
@@ -12,9 +14,18 @@ import { useGridColumns } from "../../lib/useGridColumns";
 import { useBrowseHotel } from "../hotels/hooks";
 import type { FileDto } from "../hotels/types";
 import { FileThumbnail } from "./FileThumbnail";
+import { FolderPickerModal } from "./FolderPickerModal";
 import { FolderTree } from "./FolderTree";
-import { useBulkDeleteFiles, useDeleteFile } from "./hooks";
+import { useBulkDeleteFiles, useDeleteFile, useMoveFile, useRenameFile } from "./hooks";
 import { MultiSelectToolbar } from "./MultiSelectToolbar";
+import { treePanelWidth } from "./treePanelWidth";
+
+// Resizable folder-tree panel bounds: the default matches the old fixed
+// `lg:w-72` (288px); min/max keep it from swallowing the file grid or
+// growing past usefulness.
+const TREE_DEFAULT_WIDTH = 288;
+const TREE_MIN_WIDTH = 220;
+const TREE_MAX_WIDTH = 560;
 
 // Pure CSS percentage grid (gutter-via-padding) — every tile gets an
 // identical 1/N width straight from layout, no JS measurement or two-phase
@@ -65,6 +76,18 @@ function ActionTextButton({
   );
 }
 
+// Renaming a file must never change its extension: the physical file and its
+// MimeType stay untouched on the backend (only the display OriginalName
+// changes), so an edited extension would just be a lie in the display name.
+// The dialog therefore only edits the base name, with the extension shown as
+// a fixed suffix. Split on the LAST dot; no dot (or only a leading dot, as in
+// ".env"-style names) means no extension — the whole name stays editable.
+function splitExtension(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return { base: name, ext: "" };
+  return { base: name.slice(0, dot), ext: name.slice(dot) };
+}
+
 function GridSlot({ columns, children }: { columns: number; children: React.ReactNode }) {
   return <View style={{ width: `${100 / columns}%`, padding: GUTTER }}>{children}</View>;
 }
@@ -78,6 +101,8 @@ function FileCard({
   onDownload,
   isAdmin,
   onDelete,
+  onRename,
+  onMove,
 }: {
   file: FileDto;
   selectMode: boolean;
@@ -87,6 +112,8 @@ function FileCard({
   onDownload: () => void;
   isAdmin?: boolean;
   onDelete?: () => void;
+  onRename?: () => void;
+  onMove?: () => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -111,29 +138,59 @@ function FileCard({
             />
           ) : (
             <View className="absolute bottom-2 right-2 flex-row gap-1.5">
-              <ActionIconButton onPress={onView}>
-                <EyeIcon />
-              </ActionIconButton>
-              <ActionIconButton onPress={onDownload}>
-                <DownloadIcon />
-              </ActionIconButton>
+              <Tooltip label={t("folder.view")}>
+                <ActionIconButton onPress={onView}>
+                  <EyeIcon />
+                </ActionIconButton>
+              </Tooltip>
+              <Tooltip label={t("folder.download")}>
+                <ActionIconButton onPress={onDownload}>
+                  <DownloadIcon />
+                </ActionIconButton>
+              </Tooltip>
             </View>
           )}
           {isAdmin && !selectMode ? (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                onDelete?.();
-              }}
-              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/90 items-center justify-center"
-            >
-              <Muted className="text-red-600 text-xs">✕</Muted>
-            </Pressable>
+            <View className="absolute top-2 right-2 flex-row gap-1.5">
+              <Tooltip label={t("common.rename")}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onRename?.();
+                  }}
+                  className="w-6 h-6 rounded-full bg-white/90 items-center justify-center"
+                >
+                  <PencilIcon color="#3A342B" />
+                </Pressable>
+              </Tooltip>
+              <Tooltip label={t("common.move")}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onMove?.();
+                  }}
+                  className="w-6 h-6 rounded-full bg-white/90 items-center justify-center"
+                >
+                  <MoveIcon color="#3A342B" />
+                </Pressable>
+              </Tooltip>
+              <Tooltip label={t("common.delete")}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onDelete?.();
+                  }}
+                  className="w-6 h-6 rounded-full bg-white/90 items-center justify-center"
+                >
+                  <Muted className="text-red-600 text-xs">✕</Muted>
+                </Pressable>
+              </Tooltip>
+            </View>
           ) : null}
         </View>
       </Pressable>
       <View className="p-2 gap-1.5">
-        <Muted numberOfLines={1} className="text-ink-800">
+        <Muted numberOfLines={1} className="text-ink-800" style={{ fontSize: 14.4, fontWeight: "600" }}>
           {file.originalName}
         </Muted>
         <Muted className="text-[10px]">
@@ -182,13 +239,86 @@ export function FolderBrowser({
   const { data, isLoading, isError } = useBrowseHotel(hotelId, folderId);
   const deleteFile = useDeleteFile(hotelId, folderId);
   const bulkDeleteFiles = useBulkDeleteFiles(hotelId, folderId);
+  const renameFile = useRenameFile(hotelId);
+  const moveFile = useMoveFile(hotelId);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<FileDto | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [pendingRenameFile, setPendingRenameFile] = useState<FileDto | null>(null);
+  const [pendingMoveFile, setPendingMoveFile] = useState<FileDto | null>(null);
   const columns = useGridColumns();
+
+  // --- Resizable tree panel (web + desktop only) ---------------------------
+  // Same 1024px threshold as Tailwind's `lg:` — resizing only makes sense in
+  // the side-by-side desktop layout; below it the panel is full-width anyway.
+  const { width: screenWidth } = useWindowDimensions();
+  const isDesktop = screenWidth >= 1024;
+  const canResize = Platform.OS === "web" && isDesktop;
+  const [treeWidth, setTreeWidth] = useState<number>(() => {
+    const saved = treePanelWidth.get();
+    return saved !== null && saved >= TREE_MIN_WIDTH && saved <= TREE_MAX_WIDTH
+      ? saved
+      : TREE_DEFAULT_WIDTH;
+  });
+  // Latest width for the drag handlers, so the effect below doesn't have to
+  // depend on `treeWidth` — re-running it mid-drag would tear down the very
+  // mousemove/mouseup listeners driving the drag.
+  const treeWidthRef = useRef(treeWidth);
+  treeWidthRef.current = treeWidth;
+  const dragHandleRef = useRef<View>(null);
+
+  // Wired via a direct DOM ref + addEventListener, the same technique
+  // AdminFolderToolbar's drag-and-drop uses (RNW's <View> exposes no
+  // mouse-event props). mousemove/mouseup go on `window` so the drag keeps
+  // tracking even when the pointer leaves the thin handle.
+  useEffect(() => {
+    if (!canResize) return;
+    const handle = dragHandleRef.current as unknown as HTMLElement | null;
+    if (!handle) return;
+
+    let startX = 0;
+    let startWidth = 0;
+
+    const onMouseMove = (e: MouseEvent) => {
+      setTreeWidth(
+        Math.max(TREE_MIN_WIDTH, Math.min(TREE_MAX_WIDTH, startWidth + (e.clientX - startX))),
+      );
+    };
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      treePanelWidth.set(treeWidthRef.current);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = treeWidthRef.current;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    };
+
+    // ViewStyle's `cursor` type only allows auto/pointer, so set it on the
+    // DOM node directly.
+    handle.style.cursor = "col-resize";
+    handle.addEventListener("mousedown", onMouseDown);
+    return () => {
+      handle.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [canResize]);
+  // -------------------------------------------------------------------------
+
+  const renameParts = pendingRenameFile ? splitExtension(pendingRenameFile.originalName) : null;
 
   const files = data?.files ?? [];
   const hasSubfolders = (data?.folders.length ?? 0) > 0;
@@ -241,11 +371,11 @@ export function FolderBrowser({
 
   const grid =
     isLoading ? (
-      <Muted>{t("common.loading")}</Muted>
+      <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("common.loading")}</Muted>
     ) : isError ? (
-      <Muted>{t("folder.loadError")}</Muted>
+      <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("folder.loadError")}</Muted>
     ) : files.length === 0 ? (
-      <Muted>{t("folder.empty")}</Muted>
+      <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("folder.empty")}</Muted>
     ) : (
       <View className="flex-row flex-wrap py-1" style={{ marginHorizontal: -GUTTER }}>
         {files.map((file) => (
@@ -259,6 +389,14 @@ export function FolderBrowser({
               onDownload={() => runDownload(() => downloadFile.downloadSingleFile(file.id, file.originalName))}
               isAdmin={isAdmin}
               onDelete={() => setPendingDeleteFile(file)}
+              onRename={() => {
+                renameFile.reset();
+                setPendingRenameFile(file);
+              }}
+              onMove={() => {
+                moveFile.reset();
+                setPendingMoveFile(file);
+              }}
             />
           </GridSlot>
         ))}
@@ -267,24 +405,37 @@ export function FolderBrowser({
 
   return (
     <View className={`flex-col lg:flex-row gap-5 ${boundedHeight ? "flex-1 min-h-0" : ""}`}>
-      <Card
-        className={`lg:w-72 lg:shrink-0 p-2 ${boundedHeight ? "max-h-72 lg:max-h-none lg:h-full" : ""}`}
+      <View
+        className={`relative lg:shrink-0 ${boundedHeight ? "lg:h-full" : ""}`}
+        style={isDesktop ? { width: treeWidth } : undefined}
       >
-        {boundedHeight ? (
-          <ScrollView className="flex-1" contentContainerClassName="gap-2">
-            {treeScrollArea}
-          </ScrollView>
-        ) : (
-          treeScrollArea
-        )}
-      </Card>
+        <Card className={`p-2 ${boundedHeight ? "max-h-72 lg:max-h-none lg:h-full" : ""}`}>
+          {boundedHeight ? (
+            <ScrollView className="flex-1" contentContainerClassName="gap-2">
+              {treeScrollArea}
+            </ScrollView>
+          ) : (
+            treeScrollArea
+          )}
+        </Card>
+
+        {/* Thin drag handle in the gap between tree and grid — web/desktop
+            only. Cursor + listeners are wired in the resize effect above. */}
+        {canResize ? (
+          <View
+            ref={dragHandleRef}
+            className="absolute top-0 bottom-0 rounded-full bg-ink-900/10"
+            style={{ right: -13, width: 6 }}
+          />
+        ) : null}
+      </View>
 
       <View className={`flex-1 min-w-0 ${boundedHeight ? "min-h-0 lg:h-full" : ""}`}>
         {/* Title + selection/download controls on one row, so this header
             never wraps into a second line the way title-then-toolbar
             stacked before. */}
         <View className="flex-row items-center justify-between gap-3 flex-wrap pb-3 border-b border-ink-900/10 mb-3">
-          <SectionTitle className="shrink-0">{currentLabel}</SectionTitle>
+          <SectionTitle className="shrink-0" style={{ fontSize: 14.4, fontWeight: "600" }}>{currentLabel}</SectionTitle>
           {files.length > 0 ? (
             <MultiSelectToolbar
               selectMode={selectMode}
@@ -352,6 +503,41 @@ export function FolderBrowser({
               clearSelection();
             },
           });
+        }}
+      />
+
+      <PromptDialog
+        visible={pendingRenameFile !== null}
+        title={t("folder.renameFileTitle")}
+        initialValue={renameParts?.base ?? ""}
+        placeholder={t("folder.renamePlaceholder")}
+        submitLabel={t("common.save")}
+        cancelLabel={t("common.cancel")}
+        loading={renameFile.isPending}
+        onCancel={() => setPendingRenameFile(null)}
+        suffix={renameParts?.ext || undefined}
+        onSubmit={(base) => {
+          if (!pendingRenameFile || !renameParts) return;
+          renameFile.mutate(
+            { fileId: pendingRenameFile.id, originalName: base + renameParts.ext },
+            { onSuccess: () => setPendingRenameFile(null) },
+          );
+        }}
+      />
+
+      <FolderPickerModal
+        visible={pendingMoveFile !== null}
+        title={t("folder.moveFileTitle")}
+        hotelId={hotelId}
+        loading={moveFile.isPending}
+        error={moveFile.isError ? t("folder.moveError") : null}
+        onCancel={() => setPendingMoveFile(null)}
+        onSelect={(targetFolderId) => {
+          if (!pendingMoveFile) return;
+          moveFile.mutate(
+            { fileId: pendingMoveFile.id, folderId: targetFolderId },
+            { onSuccess: () => setPendingMoveFile(null) },
+          );
         }}
       />
     </View>

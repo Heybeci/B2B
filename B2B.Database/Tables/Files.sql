@@ -6,6 +6,7 @@ CREATE TABLE [dbo].[Files]
     [Kind]           NVARCHAR (10)   NOT NULL,
     [OriginalName]   NVARCHAR (260)  NOT NULL,
     [StoredFileName] NVARCHAR (120)  NOT NULL,
+    [ThumbnailFileName] NVARCHAR (120) NULL,
     [MimeType]       NVARCHAR (120)  NOT NULL,
     [SizeBytes]      BIGINT          NOT NULL,
     [UploadedById]   INT             NOT NULL,

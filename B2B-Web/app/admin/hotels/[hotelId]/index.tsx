@@ -26,11 +26,11 @@ export default function AdminHotelDetailScreen() {
 
   const { data: hotel } = useHotel(hotelId);
 
-  if (!hotel) return <Muted>{t("common.loading")}</Muted>;
+  if (!hotel) return <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("common.loading")}</Muted>;
 
   return (
     <View className="flex-1 min-h-0 gap-4">
-      <Heading>{hotel.name}</Heading>
+      <Heading style={{ fontSize: 14.4, fontWeight: "600" }}>{hotel.name}</Heading>
 
       <FolderBrowser
         hotelId={hotelId}
@@ -38,7 +38,7 @@ export default function AdminHotelDetailScreen() {
         isAdmin={canManage}
         boundedHeight
         belowHeaderContent={
-          <Muted>{hotel.isPublished ? t("hotelList.published") : t("hotelList.draft")}</Muted>
+          <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{hotel.isPublished ? t("hotelList.published") : t("hotelList.draft")}</Muted>
         }
         onNavigate={(next) => router.setParams({ folderId: next ? String(next) : undefined })}
         adminToolbar={

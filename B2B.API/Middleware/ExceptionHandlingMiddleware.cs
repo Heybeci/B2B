@@ -14,14 +14,14 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
         {
             context.Response.StatusCode = ex.StatusCode;
             context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message }));
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message, code = ex.Code }));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled exception");
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = "Sunucu hatası" }));
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = "Sunucu hatası", code = (string?)null }));
         }
     }
 }

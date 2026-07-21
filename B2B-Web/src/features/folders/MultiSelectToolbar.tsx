@@ -57,22 +57,21 @@ export function MultiSelectToolbar({
   return (
     <View className="flex-row flex-wrap items-center gap-3">
       <Pressable onPress={onToggleSelectMode} className="px-3 py-1.5 rounded-full border border-ink-900/20">
-        <Muted className="text-ink-700">{selectMode ? t("folder.endSelect") : t("folder.select")}</Muted>
+        <Muted className="font-semibold text-ink-700">{selectMode ? t("folder.endSelect") : t("folder.select")}</Muted>
       </Pressable>
 
       {selectMode ? (
         <>
           <Pressable onPress={selectedCount === totalCount ? onClearSelection : onSelectAll}>
-            <Muted className="font-medium text-brass-700">
+            <Muted className="font-semibold text-brass-700">
               {selectedCount === totalCount
                 ? t("folder.clearSelection")
                 : t("folder.selectAllCount", { count: totalCount })}
             </Muted>
           </Pressable>
-          <Muted>{t("folder.selectedCount", { count: selectedCount })}</Muted>
+          <Muted className="font-semibold">{t("folder.selectedCount", { count: selectedCount })}</Muted>
           <Button
             label={t("folder.zipDownloadCount", { count: selectedCount })}
-            variant="primary"
             disabled={selectedCount === 0}
             loading={downloading}
             onPress={onDownloadSelected}

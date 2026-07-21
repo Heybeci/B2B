@@ -12,6 +12,11 @@ public class MediaFile
     // Physical storage is flat: storage/hotels/{HotelId}/{StoredFileName}.
     // The logical folder tree lives only in FolderId + Folder.Path.
     public string StoredFileName { get; set; } = null!;
+
+    // Web-optimized thumbnail (400px-wide JPEG) generated on upload for images
+    // only, stored at storage/hotels/{HotelId}/thumbs/{ThumbnailFileName}.
+    // Null for non-image files and for images uploaded before this feature.
+    public string? ThumbnailFileName { get; set; }
     public string MimeType { get; set; } = null!;
     public long SizeBytes { get; set; }
     public int UploadedById { get; set; }

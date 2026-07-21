@@ -11,7 +11,8 @@ public class FolderService(AppDbContext db, StorageService storage)
     private static FolderDto ToDto(Folder f) => new(f.Id, f.HotelId, f.ParentFolderId, f.Name, f.Path, f.CreatedAt);
 
     private static FileDto ToFileDto(MediaFile f) => new(
-        f.Id, f.HotelId, f.FolderId, f.Kind.ToString().ToLowerInvariant(), f.OriginalName, f.MimeType, f.SizeBytes, f.CreatedAt
+        f.Id, f.HotelId, f.FolderId, f.Kind.ToString().ToLowerInvariant(), f.OriginalName, f.MimeType, f.SizeBytes, f.CreatedAt,
+        f.ThumbnailFileName is not null
     );
 
     private async Task<Folder> GetFolderOrThrowAsync(int id) =>
@@ -108,6 +109,43 @@ public class FolderService(AppDbContext db, StorageService storage)
         return ToDto(folder);
     }
 
+    public async Task<FolderDto> MoveAsync(int id, int? newParentFolderId)
+    {
+        var folder = await GetFolderOrThrowAsync(id);
+
+        var newParentPath = "/";
+        if (newParentFolderId is not null)
+        {
+            var parent = await GetFolderOrThrowAsync(newParentFolderId.Value);
+            if (parent.HotelId != folder.HotelId)
+            {
+                throw ApiException.BadRequest("Üst klasör bu otele ait değil");
+            }
+            if (newParentFolderId == id || parent.Path.StartsWith(folder.Path))
+            {
+                throw ApiException.BadRequest("Klasör kendi alt klasörüne taşınamaz");
+            }
+            newParentPath = parent.Path;
+        }
+
+        var newPath = $"{newParentPath}{folder.Id}/";
+
+        var descendants = await db.Folders
+            .Where(f => f.HotelId == folder.HotelId && f.Path.StartsWith(folder.Path) && f.Id != folder.Id)
+            .ToListAsync();
+        foreach (var descendant in descendants)
+        {
+            descendant.Path = newPath + descendant.Path[folder.Path.Length..];
+        }
+
+        folder.ParentFolderId = newParentFolderId;
+        folder.Path = newPath;
+        folder.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        return ToDto(folder);
+    }
+
     public async Task DeleteAsync(int id)
     {
         var target = await GetFolderOrThrowAsync(id);
@@ -127,6 +165,12 @@ public class FolderService(AppDbContext db, StorageService storage)
         {
             var path = storage.AbsoluteFilePath(file.HotelId, file.StoredFileName);
             if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+
+            if (file.ThumbnailFileName is not null)
+            {
+                var thumbPath = storage.AbsoluteThumbnailPath(file.HotelId, file.ThumbnailFileName);
+                if (System.IO.File.Exists(thumbPath)) System.IO.File.Delete(thumbPath);
+            }
         }
 
         foreach (var folder in descendants)

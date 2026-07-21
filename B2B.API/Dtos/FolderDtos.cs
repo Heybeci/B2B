@@ -10,6 +10,8 @@ public record CreateFolderRequest(
 
 public record RenameFolderRequest([Required, MaxLength(200)] string Name);
 
+public record MoveFolderRequest(int? NewParentFolderId);
+
 public record FolderDto(int Id, int HotelId, int? ParentFolderId, string Name, string Path, DateTime CreatedAt);
 
 public record BreadcrumbItemDto(int Id, string Name);
