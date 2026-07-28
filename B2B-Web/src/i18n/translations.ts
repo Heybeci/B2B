@@ -93,6 +93,7 @@ const tr = {
   "folder.moveFileTitle": "Dosyayı taşı",
   "folder.rootFolder": "Kök dizin",
   "folder.moveError": "Taşıma işlemi başarısız oldu. Lütfen farklı bir klasör seçin.",
+  "folder.namePlaceholder": "Klasör adı",
 
   "upload.dropzoneHintWeb": "Dosyaları veya klasörleri buraya sürükleyin, ya da aşağıdan seçin",
   "upload.dropzoneHintNative": "Yüklemek için dosya seçin",
@@ -148,6 +149,8 @@ const tr = {
   "users.newUserTitle": "Yeni kullanıcı",
   "users.displayName": "Ad soyad",
   "users.createFailed": "Kullanıcı oluşturulamadı (kullanıcı adı veya e-posta alınmış olabilir)",
+  "users.usernameTaken": "Bu kullanıcı adı zaten kullanılıyor",
+  "users.emailTaken": "Bu e-posta adresi zaten kullanılıyor",
   "users.editTitle": "Kullanıcıyı düzenle",
   "users.newPassword": "Yeni şifre",
   "users.newPasswordPlaceholder": "Değiştirmek için doldurun",
@@ -169,6 +172,8 @@ const tr = {
   "auditLogs.noRecords": "Kayıt yok.",
   "auditLogs.previous": "Önceki",
   "auditLogs.next": "Sonraki",
+  "auditLogs.columnIpAddress": "IP Adresi",
+  "auditLogs.columnUserAgent": "Tarayıcı/İstemci",
 
   "rolePermissions.description":
     "Yönetici ve Kullanıcı rollerinin neler yapabileceğini burada belirleyebilirsin. Sistem Yöneticisi her zaman tüm yetkilere sahiptir.",
@@ -270,6 +275,7 @@ const en: Record<TranslationKey, string> = {
   "folder.moveFileTitle": "Move file",
   "folder.rootFolder": "Root folder",
   "folder.moveError": "Move failed. Please choose a different folder.",
+  "folder.namePlaceholder": "Folder name",
 
   "upload.dropzoneHintWeb": "Drag files or folders here, or pick them below",
   "upload.dropzoneHintNative": "Choose a file to upload",
@@ -325,6 +331,8 @@ const en: Record<TranslationKey, string> = {
   "users.newUserTitle": "New user",
   "users.displayName": "Full name",
   "users.createFailed": "Could not create user (username or email may already be taken)",
+  "users.usernameTaken": "This username is already taken",
+  "users.emailTaken": "This email address is already taken",
   "users.editTitle": "Edit user",
   "users.newPassword": "New password",
   "users.newPasswordPlaceholder": "Fill in to change",
@@ -346,6 +354,8 @@ const en: Record<TranslationKey, string> = {
   "auditLogs.noRecords": "No records.",
   "auditLogs.previous": "Previous",
   "auditLogs.next": "Next",
+  "auditLogs.columnIpAddress": "IP Address",
+  "auditLogs.columnUserAgent": "Browser/Client",
 
   "rolePermissions.description":
     "Set what the Manager and Staff roles can do here. The System Administrator always has full access.",
@@ -449,6 +459,7 @@ const de: Record<TranslationKey, string> = {
   "folder.moveFileTitle": "Datei verschieben",
   "folder.rootFolder": "Stammordner",
   "folder.moveError": "Verschieben fehlgeschlagen. Bitte wählen Sie einen anderen Ordner.",
+  "folder.namePlaceholder": "Ordnername",
 
   "upload.dropzoneHintWeb": "Dateien oder Ordner hierher ziehen oder unten auswählen",
   "upload.dropzoneHintNative": "Datei zum Hochladen auswählen",
@@ -504,6 +515,8 @@ const de: Record<TranslationKey, string> = {
   "users.newUserTitle": "Neuer Benutzer",
   "users.displayName": "Vollständiger Name",
   "users.createFailed": "Benutzer konnte nicht erstellt werden (Benutzername oder E-Mail evtl. bereits vergeben)",
+  "users.usernameTaken": "Dieser Benutzername ist bereits vergeben",
+  "users.emailTaken": "Diese E-Mail-Adresse ist bereits vergeben",
   "users.editTitle": "Benutzer bearbeiten",
   "users.newPassword": "Neues Passwort",
   "users.newPasswordPlaceholder": "Zum Ändern ausfüllen",
@@ -526,6 +539,8 @@ const de: Record<TranslationKey, string> = {
   "auditLogs.noRecords": "Keine Einträge.",
   "auditLogs.previous": "Zurück",
   "auditLogs.next": "Weiter",
+  "auditLogs.columnIpAddress": "IP-Adresse",
+  "auditLogs.columnUserAgent": "Browser/Client",
 
   "rolePermissions.description":
     "Legen Sie hier fest, was die Rollen Manager und Mitarbeiter tun können. Der Systemadministrator hat immer vollen Zugriff.",
@@ -626,6 +641,7 @@ const ru: Record<TranslationKey, string> = {
   "folder.moveFileTitle": "Переместить файл",
   "folder.rootFolder": "Корневая папка",
   "folder.moveError": "Не удалось переместить. Пожалуйста, выберите другую папку.",
+  "folder.namePlaceholder": "Название папки",
 
   "upload.dropzoneHintWeb": "Перетащите файлы или папки сюда либо выберите их ниже",
   "upload.dropzoneHintNative": "Выберите файл для загрузки",
@@ -681,6 +697,8 @@ const ru: Record<TranslationKey, string> = {
   "users.newUserTitle": "Новый пользователь",
   "users.displayName": "Полное имя",
   "users.createFailed": "Не удалось создать пользователя (имя пользователя или эл. почта уже могут быть заняты)",
+  "users.usernameTaken": "Это имя пользователя уже занято",
+  "users.emailTaken": "Этот адрес электронной почты уже занят",
   "users.editTitle": "Редактировать пользователя",
   "users.newPassword": "Новый пароль",
   "users.newPasswordPlaceholder": "Заполните, чтобы изменить",
@@ -703,6 +721,8 @@ const ru: Record<TranslationKey, string> = {
   "auditLogs.noRecords": "Записей нет.",
   "auditLogs.previous": "Назад",
   "auditLogs.next": "Далее",
+  "auditLogs.columnIpAddress": "IP-адрес",
+  "auditLogs.columnUserAgent": "Браузер/Клиент",
 
   "rolePermissions.description":
     "Здесь вы можете настроить, что могут делать роли «Менеджер» и «Персонал». Системный администратор всегда имеет полный доступ.",

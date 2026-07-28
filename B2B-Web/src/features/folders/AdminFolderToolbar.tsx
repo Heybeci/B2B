@@ -4,10 +4,11 @@ import * as ImagePicker from "expo-image-picker";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { Input } from "../../components/ui/Input";
 import { Body, Muted, SectionTitle } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { appendFileToFormData } from "../../lib/upload/appendFile";
+import { emptyFolderNames, type FolderNames } from "./folderName";
+import { FolderNameFields } from "./FolderNameFields";
 import { type ConflictChoice, type UploadProgressItem, uploadDroppedItems } from "./dragDropUpload";
 import { useCreateFolder, useDeleteFolder, useUploadFiles } from "./hooks";
 import { UploadProgressModal } from "./UploadProgressModal";
@@ -26,7 +27,7 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
   const uploadFiles = useUploadFiles(hotelId, folderId);
 
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderNames, setNewFolderNames] = useState<FolderNames>(emptyFolderNames());
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [conflictPrompt, setConflictPrompt] = useState<{
@@ -39,9 +40,9 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
   const dropZoneRef = useRef<View>(null);
 
   const submitNewFolder = async () => {
-    if (!newFolderName.trim()) return;
-    await createFolder.mutateAsync(newFolderName.trim());
-    setNewFolderName("");
+    if (!newFolderNames.nameTr.trim()) return;
+    await createFolder.mutateAsync(newFolderNames);
+    setNewFolderNames(emptyFolderNames());
     setCreatingFolder(false);
   };
 
@@ -152,16 +153,24 @@ export function AdminFolderToolbar({ hotelId, folderId, onFolderDeleted }: Admin
           ) : null}
         </View>
         {creatingFolder ? (
-          <View className="flex-row items-center gap-2 max-w-sm w-full">
-            <View className="flex-1">
-              <Input
-                placeholder={t("upload.folderNamePlaceholder")}
-                value={newFolderName}
-                onChangeText={setNewFolderName}
-                autoFocus
+          <View className="gap-3">
+            <FolderNameFields value={newFolderNames} onChange={setNewFolderNames} />
+            <View className="flex-row gap-2 justify-end">
+              <Button
+                label={t("common.cancel")}
+                variant="ghost"
+                onPress={() => {
+                  setCreatingFolder(false);
+                  setNewFolderNames(emptyFolderNames());
+                }}
+              />
+              <Button
+                label={t("upload.add")}
+                onPress={submitNewFolder}
+                loading={createFolder.isPending}
+                disabled={!newFolderNames.nameTr.trim()}
               />
             </View>
-            <Button label={t("upload.add")} onPress={submitNewFolder} loading={createFolder.isPending} />
           </View>
         ) : null}
       </View>

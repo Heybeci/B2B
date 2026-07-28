@@ -14,7 +14,10 @@ export interface FolderDto {
   id: number;
   hotelId: number;
   parentFolderId: number | null;
-  name: string;
+  nameTr: string;
+  nameEn: string | null;
+  nameDe: string | null;
+  nameRu: string | null;
   path: string;
   createdAt: string;
 }
@@ -32,7 +35,7 @@ export interface HotelDto {
 export interface BrowseResponse {
   hotel: { id: number; name: string; slug: string };
   folder: FolderDto | null;
-  breadcrumb: { id: number; name: string }[];
+  breadcrumb: { id: number; nameTr: string; nameEn: string | null; nameDe: string | null; nameRu: string | null }[];
   folders: FolderDto[];
   files: FileDto[];
 }

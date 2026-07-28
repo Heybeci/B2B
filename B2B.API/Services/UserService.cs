@@ -38,11 +38,11 @@ public class UserService(
         }
         if (await FindByUsernameAsync(input.Username) is not null)
         {
-            throw ApiException.Conflict("Bu kullanıcı adı zaten kullanılıyor");
+            throw ApiException.Conflict("Bu kullanıcı adı zaten kullanılıyor", "username_taken");
         }
         if (await db.Users.AnyAsync(u => u.Email == input.Email))
         {
-            throw ApiException.Conflict("Bu e-posta adresi zaten kullanılıyor");
+            throw ApiException.Conflict("Bu e-posta adresi zaten kullanılıyor", "email_taken");
         }
         var user = new User
         {

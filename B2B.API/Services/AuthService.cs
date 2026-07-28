@@ -15,6 +15,8 @@ public class AuthService(
     UserService users,
     EmailSender emailSender,
     PermissionService permissions,
+    AuditLogService auditLogs,
+    IHttpContextAccessor httpContextAccessor,
     IPublicWebUrlProvider webUrlProvider,
     IOptions<JwtOptions> jwtOptions,
     ILogger<AuthService> logger)
@@ -36,11 +38,51 @@ public class AuthService(
 
     public async Task<TokenPairDto> LoginAsync(string username, string password)
     {
+        var ipAddress = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+        var userAgent = httpContextAccessor.HttpContext?.Request.Headers.UserAgent.ToString();
+
         var user = await users.FindByUsernameAsync(username);
         if (user is null || !user.IsActive || !UserService.VerifyPassword(password, user.PasswordHash))
         {
+            // AuditLogs.UserId is a required FK (B2B.Database/Tables/AuditLogs.sql) —
+            // a row can only be attached to a real account. When the username
+            // resolves to an existing (if inactive, or wrong-password) user we
+            // still have a valid UserId to log against; a completely unknown
+            // username has nothing to attach to, so it goes through the app
+            // logger instead (still captures IP/UA for brute-force triage,
+            // just not surfaced in the /admin/audit-logs table).
+            if (user is not null)
+            {
+                await auditLogs.LogAsync(
+                    userId: user.Id,
+                    action: "Login",
+                    entityType: "Auth",
+                    entityId: null,
+                    details: "Invalid credentials",
+                    statusCode: 401,
+                    ipAddress: ipAddress,
+                    userAgent: userAgent);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Failed login attempt for unknown username {Username} from {IpAddress} ({UserAgent})",
+                    username, ipAddress, userAgent);
+            }
+
             throw ApiException.Unauthorized("Kullanıcı adı veya şifre hatalı");
         }
+
+        await auditLogs.LogAsync(
+            userId: user.Id,
+            action: "Login",
+            entityType: "Auth",
+            entityId: user.Id,
+            details: $"Login attempt: {username}",
+            statusCode: 200,
+            ipAddress: ipAddress,
+            userAgent: userAgent);
+
         return await IssueTokenPairAsync(user);
     }
 

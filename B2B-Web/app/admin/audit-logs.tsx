@@ -3,6 +3,7 @@ import { ScrollView, View } from "react-native";
 import { Button } from "../../src/components/ui/Button";
 import { Card } from "../../src/components/ui/Card";
 import { Heading, Muted } from "../../src/components/ui/Typography";
+import { Tooltip } from "../../src/components/ui/Tooltip";
 import { useAuditLogs } from "../../src/features/auditLogs/hooks";
 import { useLanguage } from "../../src/i18n/LanguageContext";
 import type { Locale } from "../../src/i18n/translations";
@@ -13,6 +14,11 @@ const DATE_LOCALE_TAGS: Record<Locale, string> = {
   de: "de-DE",
   ru: "ru-RU",
 };
+
+function truncateText(text: string | undefined, maxLength: number = 15): string {
+  if (!text) return "";
+  return text.length > maxLength ? `${text.substring(0, maxLength)}…` : text;
+}
 
 export default function AuditLogsScreen() {
   const [page, setPage] = useState(1);
@@ -42,6 +48,20 @@ export default function AuditLogsScreen() {
               <Muted className="text-ink-400">
                 {new Date(log.createdAt).toLocaleString(DATE_LOCALE_TAGS[locale])}
               </Muted>
+              {log.ipAddress && (
+                <Tooltip label={log.ipAddress}>
+                  <Muted className="text-ink-400">
+                    {t("auditLogs.columnIpAddress")}: {truncateText(log.ipAddress)}
+                  </Muted>
+                </Tooltip>
+              )}
+              {log.userAgent && (
+                <Tooltip label={log.userAgent}>
+                  <Muted className="text-ink-400">
+                    {t("auditLogs.columnUserAgent")}: {truncateText(log.userAgent)}
+                  </Muted>
+                </Tooltip>
+              )}
             </Card>
           ))}
         </View>

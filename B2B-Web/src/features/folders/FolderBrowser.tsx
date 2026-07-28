@@ -14,6 +14,7 @@ import { useGridColumns } from "../../lib/useGridColumns";
 import { useBrowseHotel } from "../hotels/hooks";
 import type { FileDto } from "../hotels/types";
 import { FileThumbnail } from "./FileThumbnail";
+import { resolveFolderName } from "./folderName";
 import { FolderPickerModal } from "./FolderPickerModal";
 import { FolderTree } from "./FolderTree";
 import { useBulkDeleteFiles, useDeleteFile, useMoveFile, useRenameFile } from "./hooks";
@@ -235,7 +236,7 @@ export function FolderBrowser({
   belowHeaderContent,
   boundedHeight = false,
 }: FolderBrowserProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { data, isLoading, isError } = useBrowseHotel(hotelId, folderId);
   const deleteFile = useDeleteFile(hotelId, folderId);
   const bulkDeleteFiles = useBulkDeleteFiles(hotelId, folderId);
@@ -323,7 +324,9 @@ export function FolderBrowser({
   const files = data?.files ?? [];
   const hasSubfolders = (data?.folders.length ?? 0) > 0;
   const ancestorIds = (data?.breadcrumb ?? []).map((crumb) => crumb.id);
-  const currentLabel = data?.folder?.name ?? data?.hotel.name ?? t("common.hotel");
+  const currentLabel = data?.folder
+    ? resolveFolderName(data.folder, locale)
+    : (data?.hotel.name ?? t("common.hotel"));
 
   const toggleSelect = (id: number) => {
     setSelected((prev) => {

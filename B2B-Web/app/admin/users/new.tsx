@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { router } from "expo-router";
+import axios from "axios";
 import { Button } from "../../../src/components/ui/Button";
 import { Input } from "../../../src/components/ui/Input";
 import { Heading, Muted } from "../../../src/components/ui/Typography";
@@ -29,8 +30,24 @@ export default function NewUserScreen() {
     try {
       await createUser.mutateAsync({ username, email, displayName, password, role });
       router.replace("/admin/users");
-    } catch {
-      setError(t("users.createFailed"));
+    } catch (err) {
+      // Known conflict codes get a precise message; anything else (validation,
+      // auth, network, unexpected 500) falls back to the generic guess — same
+      // "map known codes, never show raw backend text" convention as
+      // dragDropUpload.ts's getUploadErrorMessage.
+      const code = axios.isAxiosError(err)
+        ? (err.response?.data as { code?: string | null } | undefined)?.code
+        : undefined;
+      switch (code) {
+        case "username_taken":
+          setError(t("users.usernameTaken"));
+          break;
+        case "email_taken":
+          setError(t("users.emailTaken"));
+          break;
+        default:
+          setError(t("users.createFailed"));
+      }
     }
   };
 

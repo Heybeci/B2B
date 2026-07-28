@@ -670,7 +670,7 @@ GET            /api/audit-logs        [audit_logs.view]
 GET/PUT        /api/role-permissions  [Authorize(Roles="admin")] — sabit, izin sistemine dahil değil
 ```
 
-### Güvenlik
+### Güvenlik (2026-07-22 — WAN açılışı için sertleştirme)
 - JWT access (kısa ömürlü) + refresh token (rotasyonlu, hash'lenmiş DB kaydı)
 - Şifreler `BCrypt.Net-Next` ile hash'lenir
 - Yüklenen dosyalar hem MIME whitelist hem magic-byte imzasıyla doğrulanır
@@ -678,6 +678,30 @@ GET/PUT        /api/role-permissions  [Authorize(Roles="admin")] — sabit, izin
 - ZIP uçları dosya sayısı üst sınırıyla (`UploadLimits.MaxZipFiles`) korunur
 - Rol izinleri dinamik olsa da Sistem Yöneticisi ayrıcalığı ve
   `RolePermissionsController`'ın kendi erişimi kasıtlı olarak sabit kod
+- **HTTPS + HSTS**: `Program.cs`'te `UseHttpsRedirection()` ve `UseHsts()`
+  middleware'leri (non-Development iken) — tüm trafik şifreli, HSTS header'ı
+  tarayıcılara HTTP'ye dönülmeyeceğini garantiler.
+- **Security headers**: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`
+  — clickjacking, MIME sniffing, referrer sızıntısı koruması.
+- **CORS fail-closed**: `CorsOrigins` boşsa (Production ortamında) startup
+  `InvalidOperationException` ile başarısız olur — fail-open fallback yok.
+  Development'te sadece localhost origin'lerine izin verilir.
+- **Rate limiting** (2 katman):
+  1. **Global**: IP başına dakikada ~100 istek (FixedWindowRateLimiter).
+  2. **Auth-specific** (`login`, `forgot-password`, `reset-password`): IP
+     başına dakikada 8 istek (SlidingWindowRateLimiter, 4 segment) —
+     brute-force saldırılarını hedefler. 429 (Too Many Requests) yanıtı verir.
+- **Login logging**: başarılı VE başarısız tüm login denemeleri (bilen
+  kullanıcı adları) `AuditLog`'a kaydedilir — IP adresi, User-Agent, sonuç
+  (200 vs 401). Bilinmeyen kullanıcı adlarına yapılan denemeler `logger.
+  LogWarning`'de (server log) tutulur, `AuditLog` UI'sında görülmez (FK
+  `UserId NOT NULL` — RDBMS kısıtlaması ve intentional güvenlik tasarımı).
+- **AuditLog şeması genişlemesi**: `IpAddress` (NVARCHAR 45) ve `UserAgent`
+  (NVARCHAR 500) nullable kolonları — admin `/audit-logs` ekranında
+  bağlantı kaynağını ve tarayıcı/istemci tipini takip etmek için.
+  Mevcut mutating (POST/PUT/PATCH/DELETE) işlemleri zaten loglanıyordu,
+  login denemeleri artık da loglanıyor.
 
 ---
 
@@ -1015,3 +1039,83 @@ da (`audit-logs.tsx`) `locale`'e göre BCP47 tag seçiyor (`tr-TR`/`en-US`/
   ortamı (test amaçlı) — gerçek prod SGAPPSRV'de, oraya hiçbir zaman bu
   makineden doğrudan yazma/silme işlemi yapılmadı (kullanıcı bunu her
   seferinde kendisi yönetti/publish etti).
+- **WAN açılışı — Fortigate + güvenlik sertleştirmesi (2026-07-22)**:
+  - Fortigate VIP: WAN 443 → SGAPPSRV:443 (TCP, orijinal IP korunmalı —
+    `AuditLog`'daki `IpAddress` gerçek client IP'sini görmek için).
+  - DNS + sertifika: win-acme / Let's Encrypt, IIS'te HTTPS binding.
+  - rate limiting, HTTPS redirect, HSTS, security headers, CORS fail-closed
+    — 2026-07-22'de Program.cs'e eklendi. Fortigate tarafı: IPS, DoS policy,
+    logging ("All Sessions") — kullanıcı kendi yapılandırması.
+  - `appsettings.Production.json` mutlaka güncellenmeli: `CorsOrigins` →
+    gerçek subdomain, `Jwt:*Secret` → rotate, `SeedAdmin:Password` → değiştir.
+    Bu dosya `.gitignore`'da (secret'lar içerir), deploy öncesi manuel
+    güncellenmelidir — repo'daki şablon `.example` dosyasından kopyalanmalı.
+  - Bilinmeyen kullanıcı adlarına yapılan login denemesi: `logger.LogWarning`'de
+    (server application log) görülür, `/admin/audit-logs` UI'sında değil
+    (intentional — FK kısıtlaması + enum protection balance).
+
+---
+
+## 5.1. Klasör adlarında çoklu dil desteği (2026-07-27)
+
+`Folder.Name` (tek string) → 4 kolon: `NameTr` (zorunlu), `NameEn`/`NameDe`/`NameRu` (opsiyonel, NULL).
+Ayrı bir çeviri tablosu yerine düz kolonlar — dil sayısı sabit (4 dil, `Locale = "tr"|"en"|"de"|"ru"`),
+ayrı tablo join maliyetine katlanmaya değmez. **Backend locale bilmiyor** (backend tarafında `LanguageProvider`
+hiç yoktur) — `Folder` DTO'ları 4 alanın hepsini taşır; **frontend'de TEK merkezi `resolveFolderName(folder, locale)`**
+yardımcı fonksiyonu (`src/features/folders/folderName.ts`) aktif dile göre seçim yapar (boşsa TR'ye düşer —
+`LanguageContext.t()`'in fallback deseni taklit edilir). **Tek istisna**: ZIP indirme gerçek bir dosya çıktısı
+ürettiği için, `ZipService` opsiyonel `locale` parametresi alır; `ZipDownloadRequest.Locale` (query param, default `"tr"`)
+backend'e taşınır.
+
+**Şema değişikliği**: `B2B.API/Migrations/` altında yeni bir `AddFolderNameLocales.cs` migration dosyası manuel
+oluşturulmalı (şu 4 operasyonu içerir):
+```csharp
+migrationBuilder.RenameColumn("Name", "Folders", "NameTr");
+migrationBuilder.AddColumn<string>("NameEn", "Folders", maxLength: 200, nullable: true);
+migrationBuilder.AddColumn<string>("NameDe", "Folders", maxLength: 200, nullable: true);
+migrationBuilder.AddColumn<string>("NameRu", "Folders", maxLength: 200, nullable: true);
+```
+`AppDbContextModelSnapshot.cs` ve `B2B.Database/Tables/Folders.sql` de Name → NameTr + 3 NULL kolon ile senkronize 
+haldedir. Database publish (`SqlPackage.exe` veya SSDT) kullanıcı tarafından yapılır.
+
+> **2026-07-28 — bu değişiklik `hotels/{id}/browse` uçlarında 500'e yol açtı, kök neden
+> + veri kaybı**: Dev DB'de bu değişiklik EF migration'ıyla (`dotnet ef database update`)
+> DEĞİL, kullanıcının doğrudan SSDT/dacpac publish'iyle uygulandı (bu makinede
+> `__EFMigrationsHistory` tablosunun hiç var olmadığı doğrulandı — dev DB'nin şeması
+> baştan beri sadece SSDT/dacpac ile kuruluyor, `dotnet ef database update` hiç
+> çalıştırılmamış olabilir; bkz. bölüm 1'deki "iki parçalı şema" anlatımı, bu makinede
+> muhtemelen sadece dacpac yolu kullanılıyor). **İki farklı bug aynı anda ortaya çıktı:**
+> 1) `B2B.Database/Tables/Folders.sql`'de `NameTr` yanlışlıkla `NULL` olarak yazılmıştı
+> (olması gereken: `NOT NULL` — eski `Name` kolonu hep `NOT NULL`'du, plan.md da
+> `NameTr`'yi "zorunlu" olarak tanımlıyor; muhtemelen `NameEn/De/Ru` ile aynı satırdan
+> kopyalanırken kaçırıldı). 2) SSDT'nin dacpac publish'i, EF migration'ındaki
+> `RenameColumn("Name","NameTr")`'nin aksine, `CREATE TABLE` tanımından DDL diff'i
+> hesaplıyor — "bu bir rename" bilgisini YOK sayıyor, bunun yerine eski `Name` kolonunu
+> DROP edip yeni (nullable) `NameTr`/`NameEn`/`NameDe`/`NameRu` kolonlarını ADD ediyor.
+> Sonuç: **26 klasörün (id 2, 13, 18-41) orijinal adı geri dönülemez şekilde silindi**
+> (hepsi `NameTr = NULL` oldu; sadece migration sonrası oluşturulan tek bir klasör,
+> id 42, gerçek veriyle sağlam kaldı). `NameTr` nullable olduğu ve gerçekten NULL değerler
+> içerdiği için, EF'in non-nullable `string NameTr` property'sini materialize etmeye
+> çalışırken `SqlDataReader.GetString()` `System.Data.SqlTypes.SqlNullValueException: Data
+> is Null` fırlatıyordu (`FolderService.cs` `BrowseHotelAsync`, `db.Folders...ToListAsync()`
+> satırı) — bu, klasörü olan HER otelin browse uç noktasını 500'e düşürüyordu (klasörsüz
+> oteller, ör. o an hotel 2, etkilenmiyordu — bu yüzden ilk bildirilen "hotel 2" ile ilk
+> testte "hotel 2 çalışıyor" çelişkili görünmüştü, asıl tetikleyici klasör VARLIĞIydı).
+> **Düzeltme (dev DB'ye doğrudan `sqlcmd` ile uygulandı, EF migration kullanılmadı —
+> kullanıcı talimatı)**: NULL `NameTr` satırları `'Adsız Klasör ' + Id` placeholder'ıyla
+> dolduruldu (orijinal adlar kurtarılamaz — kullanıcı bu 26 klasörü admin panelinden elle
+> yeniden adlandırmalı), sonra `ALTER TABLE Folders ALTER COLUMN NameTr NVARCHAR(200) NOT
+> NULL` ile kolon NOT NULL'a çevrildi. `B2B.Database/Tables/Folders.sql`'deki `NameTr`
+> tanımı da `NOT NULL`'a düzeltildi (bir sonraki dacpac publish'te bu bug'ın geri
+> gelmemesi için — kaynak dosya artık DB'nin gerçek/istenen haliyle eşleşiyor).
+> **Kural**: SSDT/dacpac ile EF'in 5 tablosundan birine (Users/RefreshTokens/Hotels/
+> Folders/Files) şema değişikliği uygularken, bir EF migration'ı `RenameColumn` kullanıyorsa
+> SSDT tarafında bunun karşılığı YOKTUR — dacpac publish bunu DROP+ADD olarak uygular ve
+> **veri kaybeder**. Böyle bir rename'i veri kaybetmeden uygulamak için ya gerçek `dotnet
+> ef database update` çalıştırılmalı (SSDT değil), ya da SSDT tarafında elle bir
+> `.refactorlog` girişi/`sp_rename` script'i eklenmeli. Ayrıca yeni bir nullable/not-null
+> kolon eklerken `Folders.sql`'i EF modelindeki (`Folder.cs`, nullable reference type
+> annotasyonu) nullability ile birebir karşılaştırın — ikisi arasında sessiz bir
+> uyuşmazlık (nullable DB kolonu + non-nullable C# property) sadece o kolonda gerçekten
+> NULL bir satır olduğunda, çalışma zamanında `SqlNullValueException` olarak patlar;
+> derleme zamanında hiçbir uyarı vermez.

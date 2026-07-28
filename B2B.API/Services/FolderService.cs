@@ -8,7 +8,7 @@ namespace B2B.API.Services;
 
 public class FolderService(AppDbContext db, StorageService storage)
 {
-    private static FolderDto ToDto(Folder f) => new(f.Id, f.HotelId, f.ParentFolderId, f.Name, f.Path, f.CreatedAt);
+    private static FolderDto ToDto(Folder f) => new(f.Id, f.HotelId, f.ParentFolderId, f.NameTr, f.NameEn, f.NameDe, f.NameRu, f.Path, f.CreatedAt);
 
     private static FileDto ToFileDto(MediaFile f) => new(
         f.Id, f.HotelId, f.FolderId, f.Kind.ToString().ToLowerInvariant(), f.OriginalName, f.MimeType, f.SizeBytes, f.CreatedAt,
@@ -24,10 +24,10 @@ public class FolderService(AppDbContext db, StorageService storage)
         if (ids.Count == 0) return [];
         var folders = await db.Folders
             .Where(f => ids.Contains(f.Id) && f.HotelId == hotelId)
-            .Select(f => new { f.Id, f.Name })
+            .Select(f => new { f.Id, f.NameTr, f.NameEn, f.NameDe, f.NameRu })
             .ToListAsync();
-        var byId = folders.ToDictionary(f => f.Id, f => f.Name);
-        return [.. ids.Where(byId.ContainsKey).Select(id => new BreadcrumbItemDto(id, byId[id]))];
+        var byId = folders.ToDictionary(f => f.Id, f => new { f.NameTr, f.NameEn, f.NameDe, f.NameRu });
+        return [.. ids.Where(byId.ContainsKey).Select(id => new BreadcrumbItemDto(id, byId[id].NameTr, byId[id].NameEn, byId[id].NameDe, byId[id].NameRu))];
     }
 
     public async Task<BrowseResponseDto> BrowseHotelAsync(int hotelId, int? folderId, bool includeUnpublished = false)
@@ -52,7 +52,7 @@ public class FolderService(AppDbContext db, StorageService storage)
 
         var folders = await db.Folders
             .Where(f => f.HotelId == hotelId && f.ParentFolderId == folderId)
-            .OrderBy(f => f.SortOrder).ThenBy(f => f.Name)
+            .OrderBy(f => f.SortOrder).ThenBy(f => f.NameTr)
             .ToListAsync();
 
         var files = await db.Files
@@ -88,7 +88,10 @@ public class FolderService(AppDbContext db, StorageService storage)
         {
             HotelId = input.HotelId,
             ParentFolderId = input.ParentFolderId,
-            Name = input.Name,
+            NameTr = input.NameTr,
+            NameEn = input.NameEn,
+            NameDe = input.NameDe,
+            NameRu = input.NameRu,
             Path = "",
             CreatedById = userId,
         };
@@ -100,10 +103,13 @@ public class FolderService(AppDbContext db, StorageService storage)
         return ToDto(folder);
     }
 
-    public async Task<FolderDto> RenameAsync(int id, string name)
+    public async Task<FolderDto> RenameAsync(int id, RenameFolderRequest input)
     {
         var folder = await GetFolderOrThrowAsync(id);
-        folder.Name = name;
+        folder.NameTr = input.NameTr;
+        folder.NameEn = input.NameEn;
+        folder.NameDe = input.NameDe;
+        folder.NameRu = input.NameRu;
         folder.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return ToDto(folder);

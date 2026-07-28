@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -61,19 +63,65 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var corsOrigins = builder.Configuration.GetSection("CorsOrigins").Get<string[]>() ?? [];
+
+// Fail-closed: an empty CorsOrigins list used to fall back to
+// AllowAnyOrigin() (fail-open) — fine while the app was LAN-only, dangerous
+// once it's reachable from the WAN. In Production, a missing CorsOrigins
+// config is now a hard startup failure rather than a silent "allow
+// everyone". Development keeps its existing localhost list from
+// appsettings.Development.json; if that's ever empty too, the policy below
+// permits no origins at all instead of falling back to AllowAnyOrigin().
+if (corsOrigins.Length == 0 && builder.Environment.IsProduction())
+{
+    throw new InvalidOperationException(
+        "CorsOrigins yapılandırılmamış. Production ortamında CORS fail-open " +
+        "davranışı kapatıldı — appsettings.Production.json içine gerçek " +
+        "origin listesini (örn. [\"https://b2b.example.com\"]) ekleyin.");
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        if (corsOrigins.Length > 0)
-        {
-            policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod();
-        }
-        else
-        {
-            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
-        }
+        // No AllowAnyOrigin() fallback: zero configured origins means zero
+        // origins are allowed, not "allow everyone".
+        policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod();
     });
+});
+
+// Two rate-limit policies (Microsoft.AspNetCore.RateLimiting, built into the
+// shared framework — no extra NuGet package needed):
+// - GlobalLimiter: applies to every request (~100/min per IP), coarse
+//   abuse/DoS protection now that the API is WAN-reachable.
+// - "auth" named policy: stricter, applied only to login/forgot-password/
+//   reset-password via [EnableRateLimiting("auth")] on AuthController — the
+//   brute-force-prone endpoints. Both limiters apply together on those
+//   routes (global cap + the stricter auth cap), which is intentional
+//   defense in depth.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 8,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 4,
+                QueueLimit = 0,
+            }));
 });
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
@@ -105,6 +153,14 @@ var app = builder.Build();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
+// HSTS before the redirect (standard ASP.NET Core ordering) — skipped in
+// Development so local http://localhost:4000 testing isn't forced to HTTPS.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+app.UseHttpsRedirection();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -116,9 +172,21 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// Baseline security headers for every response. No CSP yet — React Native
+// Web renders inline styles, so a CSP tight enough to matter needs a
+// separate pass to verify nothing inline breaks; left for a later round.
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    await next();
+});
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 

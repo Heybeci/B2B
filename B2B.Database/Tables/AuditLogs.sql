@@ -8,6 +8,8 @@ CREATE TABLE [dbo].[AuditLogs]
     [Details]    NVARCHAR (1000) NULL,
     [StatusCode] INT             NOT NULL,
     [CreatedAt]  DATETIME2 (7)   NOT NULL,
+    [IpAddress]  NVARCHAR (45)   NULL,
+    [UserAgent]  NVARCHAR (500)  NULL,
     CONSTRAINT [PK_AuditLogs] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [FK_AuditLogs_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users] ([Id]) ON DELETE CASCADE
 );

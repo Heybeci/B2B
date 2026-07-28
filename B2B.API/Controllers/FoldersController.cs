@@ -15,7 +15,7 @@ public class FoldersController(FolderService folderService) : ControllerBase
         StatusCode(201, await folderService.CreateAsync(input, User.GetUserId()));
 
     [HttpPatch("{id:int}")]
-    public Task<FolderDto> Rename(int id, RenameFolderRequest input) => folderService.RenameAsync(id, input.Name);
+    public Task<FolderDto> Rename(int id, RenameFolderRequest input) => folderService.RenameAsync(id, input);
 
     [HttpPatch("{id:int}/move")]
     public Task<FolderDto> Move(int id, MoveFolderRequest input) => folderService.MoveAsync(id, input.NewParentFolderId);

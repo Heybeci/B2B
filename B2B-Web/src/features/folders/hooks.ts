@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api/client";
+import type { FolderNames } from "./folderName";
 
 export function useCreateFolder(hotelId: number, folderId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (name: string) =>
-      (await apiClient.post("/folders", { hotelId, parentFolderId: folderId, name })).data,
+    mutationFn: async (names: FolderNames) =>
+      (await apiClient.post("/folders", { hotelId, parentFolderId: folderId, ...names })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["hotels", hotelId, "browse", folderId] });
     },
@@ -31,8 +32,8 @@ export function useDeleteFolder(hotelId: number, parentFolderId: number | null) 
 export function useRenameFolder(hotelId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ folderId, name }: { folderId: number; name: string }) =>
-      (await apiClient.patch(`/folders/${folderId}`, { name })).data,
+    mutationFn: async ({ folderId, names }: { folderId: number; names: FolderNames }) =>
+      (await apiClient.patch(`/folders/${folderId}`, names)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["hotels", hotelId] });
     },

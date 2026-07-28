@@ -21,7 +21,8 @@ public record ZipDownloadRequest(
     [Required] int HotelId,
     List<int>? FileIds,
     int? FolderId,
-    bool IncludeSubfolders = true
+    bool IncludeSubfolders = true,
+    [MaxLength(2)] string Locale = "tr"  // "tr", "en", "de", "ru"
 );
 
 public record BulkDeleteFilesRequest(

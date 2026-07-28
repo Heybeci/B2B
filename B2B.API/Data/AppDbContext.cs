@@ -65,6 +65,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.Action).HasMaxLength(100);
             e.Property(a => a.EntityType).HasMaxLength(50);
             e.Property(a => a.Details).HasMaxLength(1000);
+            // 45 = max textual length of an IPv6 address (incl. IPv4-mapped form).
+            e.Property(a => a.IpAddress).HasMaxLength(45);
+            e.Property(a => a.UserAgent).HasMaxLength(500);
             e.HasIndex(a => a.UserId);
             e.HasIndex(a => a.CreatedAt);
             e.HasOne(a => a.User)
@@ -105,7 +108,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<Folder>(e =>
         {
-            e.Property(f => f.Name).HasMaxLength(200);
+            e.Property(f => f.NameTr).HasMaxLength(200);
+            e.Property(f => f.NameEn).HasMaxLength(200);
+            e.Property(f => f.NameDe).HasMaxLength(200);
+            e.Property(f => f.NameRu).HasMaxLength(200);
             e.Property(f => f.Path).HasMaxLength(900);
             e.HasIndex(f => new { f.HotelId, f.ParentFolderId });
             e.HasIndex(f => f.Path);

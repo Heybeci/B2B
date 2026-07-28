@@ -1,6 +1,7 @@
 import axios from "axios";
 import { type TranslateFn } from "../../i18n/LanguageContext";
 import { apiClient } from "../../lib/api/client";
+import { folderNamesFromSingle } from "./folderName";
 
 export interface DroppedFile {
   // Folder name segments the file was nested under when dropped (e.g.
@@ -238,12 +239,12 @@ export async function uploadDroppedItems({
         params: parentId ? { folderId: parentId } : undefined,
         ...AXIOS_CONFIG,
       });
-      const existing = (res.data.folders as { id: number; name: string }[]).find(
-        (f) => f.name.toLowerCase() === name.toLowerCase(),
+      const existing = (res.data.folders as { id: number; nameTr: string }[]).find(
+        (f) => f.nameTr.toLowerCase() === name.toLowerCase(),
       );
       const id = existing
         ? existing.id
-        : (await apiClient.post("/folders", { hotelId, parentFolderId: parentId, name }, AXIOS_CONFIG)).data.id;
+        : (await apiClient.post("/folders", { hotelId, parentFolderId: parentId, ...folderNamesFromSingle(name) }, AXIOS_CONFIG)).data.id;
       folderIdCache.set(key, id);
       setItemStatus(progressId, "done");
       emitProgress();

@@ -42,11 +42,12 @@ public class DownloadController(ZipService zipService, AppDbContext db) : Contro
         [FromQuery] int hotelId,
         [FromQuery] string? fileIds,
         [FromQuery] int? folderId,
-        [FromQuery] bool includeSubfolders = true)
+        [FromQuery] bool includeSubfolders = true,
+        [FromQuery] string locale = "tr")
     {
         var parsedFileIds = string.IsNullOrEmpty(fileIds)
             ? null
             : fileIds.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToList();
-        return HandleZipAsync(new ZipDownloadRequest(hotelId, parsedFileIds, folderId, includeSubfolders));
+        return HandleZipAsync(new ZipDownloadRequest(hotelId, parsedFileIds, folderId, includeSubfolders, locale));
     }
 }

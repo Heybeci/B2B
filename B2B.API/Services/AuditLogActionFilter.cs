@@ -50,7 +50,9 @@ public class AuditLogActionFilter(AuditLogService auditLogService) : IAsyncActio
             entityType: controllerName,
             entityId: entityId,
             details: detailParts.Count > 0 ? string.Join(", ", detailParts) : null,
-            statusCode: statusCode
+            statusCode: statusCode,
+            ipAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+            userAgent: httpContext.Request.Headers.UserAgent.ToString()
         );
     }
 

@@ -10,5 +10,7 @@ public record AuditLogDto(
     int? EntityId,
     string? Details,
     int StatusCode,
+    string? IpAddress,
+    string? UserAgent,
     DateTime CreatedAt
 );

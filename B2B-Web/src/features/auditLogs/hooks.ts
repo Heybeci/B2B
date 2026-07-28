@@ -13,6 +13,8 @@ export interface AuditLogDto {
   details: string | null;
   statusCode: number;
   createdAt: string;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 export function useAuditLogs(page: number) {

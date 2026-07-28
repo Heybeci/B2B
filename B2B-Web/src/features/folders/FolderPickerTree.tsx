@@ -5,6 +5,7 @@ import { Body } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { useBrowseHotel } from "../hotels/hooks";
 import type { FolderDto } from "../hotels/types";
+import { resolveFolderName } from "./folderName";
 
 const ROW_HEIGHT = 34;
 const INDENT = 18;
@@ -85,6 +86,7 @@ function PickerNode({
   disabled?: boolean;
   onSelect: (folderId: number | null) => void;
 }) {
+  const { locale } = useLanguage();
   const isExcluded = folder.id === excludeFolderId;
   const isExpanded = expanded.has(folder.id) && !isExcluded;
   const { data } = useBrowseHotel(hotelId, folder.id, isExpanded);
@@ -93,7 +95,7 @@ function PickerNode({
   return (
     <>
       <PickerRow
-        label={folder.name}
+        label={resolveFolderName(folder, locale)}
         depth={depth}
         disabled={disabled || isExcluded}
         onPress={() => onSelect(folder.id)}

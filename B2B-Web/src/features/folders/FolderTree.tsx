@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ActionMenu } from "../../components/ui/ActionMenu";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { ChevronIcon, DownloadIcon, KebabIcon, MoveIcon, PencilIcon, TrashIcon } from "../../components/ui/IconGlyphs";
-import { PromptDialog } from "../../components/ui/PromptDialog";
 import { Tooltip } from "../../components/ui/Tooltip";
 import { Body } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -13,8 +12,10 @@ import * as downloadFile from "../../lib/download/downloadFile";
 import { ROW_SHADOW } from "../../theme/glass";
 import { useBrowseHotel } from "../hotels/hooks";
 import type { FolderDto } from "../hotels/types";
+import { emptyFolderNames, resolveFolderName, type FolderNames } from "./folderName";
 import { FolderPickerModal } from "./FolderPickerModal";
 import { useMoveFolder, useRenameFolder } from "./hooks";
+import { MultiLocaleFolderDialog } from "./MultiLocaleFolderDialog";
 
 // Brass is the app's one accent color for "selected"/active state.
 const ACCENT_TEXT = "text-brass-700";
@@ -48,13 +49,13 @@ export function FolderTree({
   onSelect,
   isAdmin,
 }: FolderTreeProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [downloadingKey, setDownloadingKey] = useState<number | "root" | null>(null);
-  const [pendingDeleteFolder, setPendingDeleteFolder] = useState<{ id: number; name: string } | null>(null);
-  const [pendingRenameFolder, setPendingRenameFolder] = useState<{ id: number; name: string } | null>(null);
-  const [pendingMoveFolder, setPendingMoveFolder] = useState<{ id: number; name: string } | null>(null);
+  const [pendingDeleteFolder, setPendingDeleteFolder] = useState<{ id: number; names: FolderNames } | null>(null);
+  const [pendingRenameFolder, setPendingRenameFolder] = useState<{ id: number; names: FolderNames } | null>(null);
+  const [pendingMoveFolder, setPendingMoveFolder] = useState<{ id: number; names: FolderNames } | null>(null);
 
   // Whatever folder is selected (e.g. from a deep link), keep its ancestor
   // chain expanded so the selected node is always visible in the tree.
@@ -121,11 +122,11 @@ export function FolderTree({
 
   // Reset the mutations when (re)opening a dialog so a stale error/pending
   // state from a previous attempt doesn't bleed into the next one.
-  const requestRenameFolder = (folder: { id: number; name: string }) => {
+  const requestRenameFolder = (folder: { id: number; names: FolderNames }) => {
     renameFolder.reset();
     setPendingRenameFolder(folder);
   };
-  const requestMoveFolder = (folder: { id: number; name: string }) => {
+  const requestMoveFolder = (folder: { id: number; names: FolderNames }) => {
     moveFolder.reset();
     setPendingMoveFolder(folder);
   };
@@ -178,7 +179,9 @@ export function FolderTree({
       <ConfirmDialog
         visible={pendingDeleteFolder !== null}
         title={t("folder.deleteFolderTitle")}
-        message={t("folder.deleteFolderMessage", { name: pendingDeleteFolder?.name ?? "" })}
+        message={t("folder.deleteFolderMessage", {
+          name: pendingDeleteFolder ? resolveFolderName(pendingDeleteFolder.names, locale) : "",
+        })}
         confirmLabel={t("common.delete")}
         cancelLabel={t("common.cancel")}
         loading={deleteFolder.isPending}
@@ -186,19 +189,18 @@ export function FolderTree({
         onConfirm={confirmDeleteFolder}
       />
 
-      <PromptDialog
+      <MultiLocaleFolderDialog
         visible={pendingRenameFolder !== null}
         title={t("folder.renameFolderTitle")}
-        initialValue={pendingRenameFolder?.name ?? ""}
-        placeholder={t("folder.renamePlaceholder")}
+        initialValue={pendingRenameFolder?.names ?? emptyFolderNames()}
         submitLabel={t("common.save")}
         cancelLabel={t("common.cancel")}
         loading={renameFolder.isPending}
         onCancel={() => setPendingRenameFolder(null)}
-        onSubmit={(name) => {
+        onSubmit={(names) => {
           if (!pendingRenameFolder) return;
           renameFolder.mutate(
-            { folderId: pendingRenameFolder.id, name },
+            { folderId: pendingRenameFolder.id, names },
             { onSuccess: () => setPendingRenameFolder(null) },
           );
         }}
@@ -249,18 +251,20 @@ function FolderTreeNode({
   onDownload: (folderId: number) => void;
   downloadingKey: number | "root" | null;
   isAdmin?: boolean;
-  onDeleteRequest: (folder: { id: number; name: string }) => void;
-  onRenameRequest: (folder: { id: number; name: string }) => void;
-  onMoveRequest: (folder: { id: number; name: string }) => void;
+  onDeleteRequest: (folder: { id: number; names: FolderNames }) => void;
+  onRenameRequest: (folder: { id: number; names: FolderNames }) => void;
+  onMoveRequest: (folder: { id: number; names: FolderNames }) => void;
 }) {
   const isExpanded = expanded.has(folder.id);
   const { data } = useBrowseHotel(hotelId, folder.id, isExpanded);
   const children = data?.folders ?? [];
+  const { locale } = useLanguage();
+  const displayName = resolveFolderName(folder, locale);
 
   return (
     <>
       <TreeRow
-        label={folder.name}
+        label={displayName}
         depth={depth}
         selected={selectedFolderId === folder.id}
         expanded={isExpanded}
@@ -268,9 +272,9 @@ function FolderTreeNode({
         onTogglePress={() => onToggle(folder.id)}
         onDownload={() => onDownload(folder.id)}
         downloading={downloadingKey === folder.id}
-        onDelete={isAdmin ? () => onDeleteRequest({ id: folder.id, name: folder.name }) : undefined}
-        onRename={isAdmin ? () => onRenameRequest({ id: folder.id, name: folder.name }) : undefined}
-        onMove={isAdmin ? () => onMoveRequest({ id: folder.id, name: folder.name }) : undefined}
+        onDelete={isAdmin ? () => onDeleteRequest({ id: folder.id, names: folder }) : undefined}
+        onRename={isAdmin ? () => onRenameRequest({ id: folder.id, names: folder }) : undefined}
+        onMove={isAdmin ? () => onMoveRequest({ id: folder.id, names: folder }) : undefined}
       />
       {isExpanded
         ? children.map((child) => (

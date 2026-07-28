@@ -5,7 +5,10 @@ public class Folder
     public int Id { get; set; }
     public int HotelId { get; set; }
     public int? ParentFolderId { get; set; }
-    public string Name { get; set; } = null!;
+    public string NameTr { get; set; } = null!;
+    public string? NameEn { get; set; }
+    public string? NameDe { get; set; }
+    public string? NameRu { get; set; }
 
     // Materialized path, e.g. "/1/4/9/" — lets us find "all descendants of X"
     // with a single LIKE 'path%' query instead of a recursive walk.

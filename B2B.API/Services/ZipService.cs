@@ -11,11 +11,20 @@ public record ZipEntryPlan(string AbsolutePath, string ArchivePath);
 
 public class ZipService(AppDbContext db, StorageService storage)
 {
-    private async Task<Dictionary<int, string>> FolderNamesByIdAsync(int hotelId, List<int> ids)
+    private static string ResolveFolderName(Folder f, string locale) =>
+        locale switch
+        {
+            "en" => f.NameEn,
+            "de" => f.NameDe,
+            "ru" => f.NameRu,
+            _ => null
+        } is { Length: > 0 } name ? name : f.NameTr;
+
+    private async Task<Dictionary<int, string>> FolderNamesByIdAsync(int hotelId, List<int> ids, string locale)
     {
         if (ids.Count == 0) return [];
         var folders = await db.Folders.Where(f => f.HotelId == hotelId && ids.Contains(f.Id)).ToListAsync();
-        return folders.ToDictionary(f => f.Id, f => f.Name);
+        return folders.ToDictionary(f => f.Id, f => ResolveFolderName(f, locale));
     }
 
     private async Task<string> ArchivePathForAsync(int hotelId, int? folderId, Dictionary<int, string> namesById, int? belowFolderId)
@@ -60,7 +69,7 @@ public class ZipService(AppDbContext db, StorageService storage)
             if (files.Count == 0) throw ApiException.NotFound("Seçilen dosyalar bulunamadı");
 
             var folderIds = files.Where(f => f.FolderId != null).Select(f => f.FolderId!.Value).Distinct().ToList();
-            var namesById = await FolderNamesByIdAsync(input.HotelId, folderIds);
+            var namesById = await FolderNamesByIdAsync(input.HotelId, folderIds, input.Locale);
 
             foreach (var file in files)
             {
@@ -89,7 +98,7 @@ public class ZipService(AppDbContext db, StorageService storage)
             ? await db.Folders.Where(f => f.HotelId == input.HotelId && f.Path.StartsWith(rootFolder.Path)).ToListAsync()
             : [rootFolder];
         var scopeIds = folderScope.Select(f => f.Id).ToList();
-        var scopeNames = await FolderNamesByIdAsync(input.HotelId, scopeIds);
+        var scopeNames = await FolderNamesByIdAsync(input.HotelId, scopeIds, input.Locale);
 
         var scopedFiles = await db.Files
             .Where(f => f.HotelId == input.HotelId && f.FolderId != null && scopeIds.Contains(f.FolderId.Value) && f.Kind != FileKind.Logo)
