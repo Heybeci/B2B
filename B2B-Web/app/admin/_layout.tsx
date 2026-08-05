@@ -10,7 +10,7 @@ import { PERMISSIONS } from "../../src/features/rolePermissions/hooks";
 
 function NavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
   return (
-    <Link href={href as never} className={`px-3 py-2.5 rounded-md lg:w-full ${active ? "bg-ink-900/8" : ""}`}>
+    <Link href={href as never} className={`px-3 py-2.5 rounded-md ${active ? "bg-ink-900/8" : ""}`}>
       <Muted className={active ? "text-ink-900 font-medium" : "text-ink-400"}>{label}</Muted>
     </Link>
   );
@@ -63,34 +63,24 @@ export default function AdminLayout() {
   return (
     <GlassBackground>
       <View className="flex-1">
-        <View className="flex-1 lg:flex-row">
-          {/* Wide screens: vertical nav sidebar, user info + logout pinned to its bottom */}
-          <View className="hidden lg:flex lg:w-48 lg:border-r lg:border-ink-900/10 px-3 py-6">
-            <View className="flex-1 gap-1">{navLinks}</View>
-            <View className="gap-3 pt-4 border-t border-ink-900/10 px-3">
-              <LanguageSwitcher />
-              <Muted numberOfLines={1}>{user.displayName}</Muted>
-              <Pressable onPress={logout}>
-                <Muted className="text-red-600">{t("admin.nav.logout")}</Muted>
-              </Pressable>
-            </View>
+        {/* Single top bar at every screen width: nav links left, language
+            switcher + user + logout right. Desktop used to have a separate
+            left sidebar with the language switcher pinned to its bottom —
+            removed in favor of this one layout (matches what this bar
+            already looked like on narrow screens). */}
+        <View className="flex-row flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-ink-900/10">
+          <View className="flex-row items-center gap-1 flex-wrap">{navLinks}</View>
+          <View className="flex-row items-center gap-4">
+            <LanguageSwitcher />
+            <Muted numberOfLines={1}>{user.displayName}</Muted>
+            <Pressable onPress={logout}>
+              <Muted className="text-red-600">{t("admin.nav.logout")}</Muted>
+            </Pressable>
           </View>
+        </View>
 
-          {/* Narrow screens: original horizontal top bar */}
-          <View className="flex lg:hidden flex-row items-center justify-between px-6 py-4 border-b border-ink-900/10">
-            <View className="flex-row items-center gap-1 flex-wrap">{navLinks}</View>
-            <View className="flex-row items-center gap-4">
-              <LanguageSwitcher />
-              <Muted>{user.displayName}</Muted>
-              <Pressable onPress={logout}>
-                <Muted className="text-red-600">{t("admin.nav.logout")}</Muted>
-              </Pressable>
-            </View>
-          </View>
-
-          <View className="flex-1 px-6 py-6">
-            <Slot />
-          </View>
+        <View className="flex-1 px-6 py-6">
+          <Slot />
         </View>
         <Footer />
       </View>

@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Hotel> Hotels => Set<Hotel>();
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<MediaFile> Files => Set<MediaFile>();
+    public DbSet<EntityChangeLog> EntityChangeLogs => Set<EntityChangeLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -132,6 +133,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(f => f.CreatedById)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Trash — see plan.md Çöp Kutusu. Restrict like CreatedBy above.
+            e.HasOne(f => f.DeletedBy)
+                .WithMany()
+                .HasForeignKey(f => f.DeletedById)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MediaFile>(e =>
@@ -158,6 +165,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(f => f.UploadedBy)
                 .WithMany()
                 .HasForeignKey(f => f.UploadedById)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Trash — see plan.md Çöp Kutusu. Restrict like UploadedBy above.
+            e.HasOne(f => f.DeletedBy)
+                .WithMany()
+                .HasForeignKey(f => f.DeletedById)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EntityChangeLog>(e =>
+        {
+            e.Property(c => c.EntityType).HasMaxLength(20);
+            e.Property(c => c.ChangeType).HasMaxLength(20);
+            e.Property(c => c.PreviousValueJson).HasMaxLength(1000);
+            e.HasIndex(c => new { c.HotelId, c.ChangedAt });
+
+            e.HasOne(c => c.Hotel)
+                .WithMany()
+                .HasForeignKey(c => c.HotelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(c => c.ChangedBy)
+                .WithMany()
+                .HasForeignKey(c => c.ChangedById)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

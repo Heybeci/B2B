@@ -1,8 +1,9 @@
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { CameraIcon } from "../../../../src/components/ui/IconGlyphs";
 import { Heading, Muted } from "../../../../src/components/ui/Typography";
 import { useAuth } from "../../../../src/features/auth/AuthContext";
-import { AdminFolderToolbar } from "../../../../src/features/folders/AdminFolderToolbar";
+import { AdminFolderActions, AdminFolderDropzone, useAdminFolderToolbarState } from "../../../../src/features/folders/AdminFolderToolbar";
 import { FolderBrowser } from "../../../../src/features/folders/FolderBrowser";
 import { useHotel } from "../../../../src/features/hotels/hooks";
 import { useLanguage } from "../../../../src/i18n/LanguageContext";
@@ -25,12 +26,13 @@ export default function AdminHotelDetailScreen() {
   const canManage = user?.permissions.includes(PERMISSIONS.HotelsManage) ?? false;
 
   const { data: hotel } = useHotel(hotelId);
+  const adminState = useAdminFolderToolbarState(hotelId, folderId, () => router.setParams({ folderId: undefined }));
 
   if (!hotel) return <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("common.loading")}</Muted>;
 
   return (
     <View className="flex-1 min-h-0 gap-4">
-      <Heading style={{ fontSize: 14.4, fontWeight: "600" }}>{hotel.name}</Heading>
+      {/* <Heading style={{ fontSize: 14.4, fontWeight: "600" }}>{hotel.name}</Heading> */}
 
       <FolderBrowser
         hotelId={hotelId}
@@ -38,18 +40,22 @@ export default function AdminHotelDetailScreen() {
         isAdmin={canManage}
         boundedHeight
         belowHeaderContent={
-          <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{hotel.isPublished ? t("hotelList.published") : t("hotelList.draft")}</Muted>
+          <View className="flex-row items-center gap-2">
+            <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{hotel.isPublished ? t("hotelList.published") : t("hotelList.draft")}</Muted>
+            {hotel.photoCount > 0 ? (
+              <>
+                <Muted className="text-ink-300">·</Muted>
+                <View className="flex-row items-center gap-1">
+                  <CameraIcon color="#6B6252" />
+                  <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("hotelList.photoCount", { count: hotel.photoCount })}</Muted>
+                </View>
+              </>
+            ) : null}
+          </View>
         }
         onNavigate={(next) => router.setParams({ folderId: next ? String(next) : undefined })}
-        adminToolbar={
-          canManage ? (
-            <AdminFolderToolbar
-              hotelId={hotelId}
-              folderId={folderId}
-              onFolderDeleted={() => router.setParams({ folderId: undefined })}
-            />
-          ) : undefined
-        }
+        adminActions={canManage ? <AdminFolderActions state={adminState} /> : undefined}
+        adminToolbar={canManage ? <AdminFolderDropzone state={adminState} /> : undefined}
       />
     </View>
   );

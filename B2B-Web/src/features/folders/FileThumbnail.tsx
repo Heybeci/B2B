@@ -8,11 +8,12 @@ import { colors } from "../../theme/colors";
 import type { FileDto } from "../hotels/types";
 
 export function fileThumbnailUrl(file: FileDto, preferThumbnail = true): string {
-  // Use thumbnail endpoint if available (hasThumbnail === true), otherwise fall back to download
+  // Use thumbnail endpoint if available (hasThumbnail === true), otherwise fall back to /view
+  // (server-side resolves to the web-optimized copy when one exists, else the original)
   if (preferThumbnail && file.hasThumbnail) {
     return `${API_URL}/files/${file.id}/thumbnail`;
   }
-  return `${API_URL}/files/${file.id}/download`;
+  return `${API_URL}/files/${file.id}/view`;
 }
 
 // A plain page-with-folded-corner glyph for non-image, non-video files

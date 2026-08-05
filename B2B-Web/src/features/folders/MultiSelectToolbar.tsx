@@ -30,10 +30,15 @@ interface MultiSelectToolbarProps {
   downloading?: boolean;
   onDeleteSelected?: () => void;
   deleting?: boolean;
+  onMoveSelected?: () => void;
+  moving?: boolean;
   includeSubfolders: boolean;
   onToggleIncludeSubfolders: (value: boolean) => void;
   onDownloadFolder: () => void;
   hasSubfolders: boolean;
+  // Admin's hotel-content page hides every download control — it manages
+  // files, it doesn't consume them (same reasoning as FileCard/FolderTree).
+  showDownload: boolean;
 }
 
 export function MultiSelectToolbar({
@@ -47,18 +52,23 @@ export function MultiSelectToolbar({
   downloading,
   onDeleteSelected,
   deleting,
+  onMoveSelected,
+  moving,
   includeSubfolders,
   onToggleIncludeSubfolders,
   onDownloadFolder,
   hasSubfolders,
+  showDownload,
 }: MultiSelectToolbarProps) {
   const { t } = useLanguage();
 
   return (
     <View className="flex-row flex-wrap items-center gap-3">
-      <Pressable onPress={onToggleSelectMode} className="px-3 py-1.5 rounded-full border border-ink-900/20">
-        <Muted className="font-semibold text-ink-700">{selectMode ? t("folder.endSelect") : t("folder.select")}</Muted>
-      </Pressable>
+      <Button
+        label={selectMode ? t("folder.endSelect") : t("folder.select")}
+        variant="secondary"
+        onPress={onToggleSelectMode}
+      />
 
       {selectMode ? (
         <>
@@ -70,12 +80,22 @@ export function MultiSelectToolbar({
             </Muted>
           </Pressable>
           <Muted className="font-semibold">{t("folder.selectedCount", { count: selectedCount })}</Muted>
-          <Button
-            label={t("folder.zipDownloadCount", { count: selectedCount })}
-            disabled={selectedCount === 0}
-            loading={downloading}
-            onPress={onDownloadSelected}
-          />
+          {showDownload ? (
+            <Button
+              label={t("folder.zipDownloadCount", { count: selectedCount })}
+              disabled={selectedCount === 0}
+              loading={downloading}
+              onPress={onDownloadSelected}
+            />
+          ) : null}
+          {onMoveSelected ? (
+            <Button
+              label={t("folder.moveSelectedButton")}
+              disabled={selectedCount === 0}
+              loading={moving}
+              onPress={onMoveSelected}
+            />
+          ) : null}
           {onDeleteSelected ? (
             <Button
               label={t("folder.deleteSelectedButton")}
@@ -86,7 +106,7 @@ export function MultiSelectToolbar({
             />
           ) : null}
         </>
-      ) : (
+      ) : showDownload ? (
         <View className="flex-row items-center gap-3">
           {hasSubfolders ? (
             <View className="flex-row items-center gap-2">
@@ -96,7 +116,7 @@ export function MultiSelectToolbar({
           ) : null}
           <Button label={t("folder.downloadFolder")} variant="primary" loading={downloading} onPress={onDownloadFolder} />
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

@@ -17,6 +17,9 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 
 builder.Services.AddHttpContextAccessor();
+// Outbound HTTP (currently only the keyless GeoIP lookup behind
+// GET /api/locale/suggest — see LocaleSuggestionService).
+builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IConnectionStringProvider, ConnectionStringProvider>();
 builder.Services.AddSingleton<IPublicWebUrlProvider, PublicWebUrlProvider>();
 
@@ -30,12 +33,14 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<HotelService>();
 builder.Services.AddScoped<FolderService>();
 builder.Services.AddScoped<FileService>();
+builder.Services.AddScoped<ChangeHistoryService>();
 builder.Services.AddScoped<ZipService>();
 builder.Services.AddScoped<EmailSender>();
 builder.Services.AddScoped<EmailSettingsService>();
 builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddScoped<AuditLogActionFilter>();
 builder.Services.AddScoped<PermissionService>();
+builder.Services.AddScoped<LocaleSuggestionService>();
 
 // CreateUserRequest/UpdateUserRequest.Role is a raw UserRole enum; the
 // frontend posts it as a string ("admin"/"staff"), which System.Text.Json

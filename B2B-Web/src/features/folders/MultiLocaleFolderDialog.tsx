@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { SectionTitle } from "../../components/ui/Typography";
+import { Muted, SectionTitle } from "../../components/ui/Typography";
 import type { FolderNames } from "./folderName";
 import { FolderNameFields } from "./FolderNameFields";
 
@@ -15,6 +15,7 @@ interface MultiLocaleFolderDialogProps {
   onSubmit: (names: FolderNames) => void;
   onCancel: () => void;
   loading?: boolean;
+  error?: string | null;
 }
 
 export function MultiLocaleFolderDialog({
@@ -26,6 +27,7 @@ export function MultiLocaleFolderDialog({
   onSubmit,
   onCancel,
   loading,
+  error,
 }: MultiLocaleFolderDialogProps) {
   const [value, setValue] = useState<FolderNames>(initialValue);
 
@@ -43,6 +45,7 @@ export function MultiLocaleFolderDialog({
         <Card className="p-5 gap-4 max-w-sm w-full">
           <SectionTitle>{title}</SectionTitle>
           <FolderNameFields value={value} onChange={setValue} disabled={loading} />
+          {error ? <Muted className="text-red-600">{error}</Muted> : null}
           <View className="flex-row gap-2 justify-end">
             <Button label={cancelLabel} variant="ghost" onPress={onCancel} disabled={loading} />
             <Button

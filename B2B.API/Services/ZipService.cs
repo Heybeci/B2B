@@ -63,8 +63,13 @@ public class ZipService(AppDbContext db, StorageService storage)
             {
                 throw ApiException.BadRequest($"En fazla {UploadLimits.MaxZipFiles} dosya birlikte indirilebilir");
             }
+            // The Folder!.IsSystemGenerated check guards against a
+            // guessed/leaked file id pulling in a hidden web-optimized-copy
+            // row (see FileService) — those must never be independently
+            // zippable, only ever served transparently via /view.
             var files = await db.Files
-                .Where(f => input.FileIds.Contains(f.Id) && f.HotelId == input.HotelId && f.Kind != FileKind.Logo)
+                .Where(f => input.FileIds.Contains(f.Id) && f.HotelId == input.HotelId && f.Kind != FileKind.Logo && !f.IsDeleted
+                    && (f.FolderId == null || !f.Folder!.IsSystemGenerated))
                 .ToListAsync();
             if (files.Count == 0) throw ApiException.NotFound("Seçilen dosyalar bulunamadı");
 
@@ -89,19 +94,23 @@ public class ZipService(AppDbContext db, StorageService storage)
         }
 
         var rootFolder = await db.Folders.FindAsync(input.FolderId!.Value);
-        if (rootFolder is null || rootFolder.HotelId != input.HotelId)
+        if (rootFolder is null || rootFolder.HotelId != input.HotelId || rootFolder.IsSystemGenerated)
         {
             throw ApiException.NotFound("Klasör bulunamadı");
         }
 
+        // Excludes hidden web-optimized-copy subfolders (see FileService) from
+        // recursive "download this folder including subfolders" — otherwise a
+        // recursive zip would bundle in duplicate low-res copies of images
+        // already present in the archive at full resolution.
         var folderScope = input.IncludeSubfolders
-            ? await db.Folders.Where(f => f.HotelId == input.HotelId && f.Path.StartsWith(rootFolder.Path)).ToListAsync()
+            ? await db.Folders.Where(f => f.HotelId == input.HotelId && f.Path.StartsWith(rootFolder.Path) && !f.IsSystemGenerated).ToListAsync()
             : [rootFolder];
         var scopeIds = folderScope.Select(f => f.Id).ToList();
         var scopeNames = await FolderNamesByIdAsync(input.HotelId, scopeIds, input.Locale);
 
         var scopedFiles = await db.Files
-            .Where(f => f.HotelId == input.HotelId && f.FolderId != null && scopeIds.Contains(f.FolderId.Value) && f.Kind != FileKind.Logo)
+            .Where(f => f.HotelId == input.HotelId && f.FolderId != null && scopeIds.Contains(f.FolderId.Value) && f.Kind != FileKind.Logo && !f.IsDeleted)
             .Take(UploadLimits.MaxZipFiles + 1)
             .ToListAsync();
         if (scopedFiles.Count == 0) throw ApiException.NotFound("Bu klasörde dosya yok");

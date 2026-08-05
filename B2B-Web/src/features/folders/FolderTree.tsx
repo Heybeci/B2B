@@ -1,20 +1,35 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
+// Deep import (not `from "@expo/vector-icons"`): the package barrel eagerly
+// requires every icon set, which would pull all of their .ttf assets into the
+// bundle. This path pulls only the Font Awesome 5 fonts.
+import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ActionMenu } from "../../components/ui/ActionMenu";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { ChevronIcon, DownloadIcon, KebabIcon, MoveIcon, PencilIcon, TrashIcon } from "../../components/ui/IconGlyphs";
+import {
+  CameraIcon,
+  ChevronIcon,
+  DownloadIcon,
+  DragHandleIcon,
+  KebabIcon,
+  MoveIcon,
+  PencilIcon,
+  TrashIcon,
+} from "../../components/ui/IconGlyphs";
+import { useToast } from "../../components/ui/Toast";
 import { Tooltip } from "../../components/ui/Tooltip";
-import { Body } from "../../components/ui/Typography";
+import { Body, Muted } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { apiClient } from "../../lib/api/client";
+import { useDragReorder } from "../../lib/dnd/useDragReorder";
 import * as downloadFile from "../../lib/download/downloadFile";
 import { ROW_SHADOW } from "../../theme/glass";
 import { useBrowseHotel } from "../hotels/hooks";
-import type { FolderDto } from "../hotels/types";
+import type { BrowseFolderDto } from "../hotels/types";
 import { emptyFolderNames, resolveFolderName, type FolderNames } from "./folderName";
 import { FolderPickerModal } from "./FolderPickerModal";
-import { useMoveFolder, useRenameFolder } from "./hooks";
+import { useMoveFolder, useRenameFolder, useReorderFolders } from "./hooks";
 import { MultiLocaleFolderDialog } from "./MultiLocaleFolderDialog";
 
 // Brass is the app's one accent color for "selected"/active state.
@@ -50,6 +65,7 @@ export function FolderTree({
   isAdmin,
 }: FolderTreeProps) {
   const { t, locale } = useLanguage();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [downloadingKey, setDownloadingKey] = useState<number | "root" | null>(null);
@@ -71,6 +87,19 @@ export function FolderTree({
   const { data: rootData } = useBrowseHotel(hotelId, null);
   const rootFolders = rootData?.folders ?? [];
   const rootFileIds = rootData?.files.map((f) => f.id) ?? [];
+
+  // Root-level siblings (parentFolderId: null) get their own reorder
+  // instance; each FolderTreeNode below sets up its own for its own children
+  // — reordering is always scoped to "this node's direct children", never
+  // across levels.
+  const reorderRootFolders = useReorderFolders(hotelId, null);
+  const rootDrag = useDragReorder({
+    items: rootFolders,
+    getId: (f) => f.id,
+    onReorder: (orderedIds) => reorderRootFolders.mutate(orderedIds),
+    layout: "list",
+    enabled: !!isAdmin,
+  });
 
   const toggle = (id: number) =>
     setExpanded((prev) => {
@@ -156,8 +185,9 @@ export function FolderTree({
         onPress={() => onSelect(null)}
         onDownload={() => downloadFolder(null)}
         downloading={downloadingKey === "root"}
+        showDownload={!isAdmin}
       />
-      {rootFolders.map((folder) => (
+      {rootDrag.items.map((folder) => (
         <FolderTreeNode
           key={folder.id}
           hotelId={hotelId}
@@ -173,6 +203,9 @@ export function FolderTree({
           onDeleteRequest={setPendingDeleteFolder}
           onRenameRequest={requestRenameFolder}
           onMoveRequest={requestMoveFolder}
+          itemRef={rootDrag.getItemRef(folder.id)}
+          dragHandleRef={isAdmin ? rootDrag.getHandleRef(folder.id) : undefined}
+          dragging={rootDrag.draggingId === folder.id}
         />
       ))}
 
@@ -196,12 +229,19 @@ export function FolderTree({
         submitLabel={t("common.save")}
         cancelLabel={t("common.cancel")}
         loading={renameFolder.isPending}
+        error={renameFolder.isError ? t("folder.renameError") : null}
         onCancel={() => setPendingRenameFolder(null)}
         onSubmit={(names) => {
           if (!pendingRenameFolder) return;
           renameFolder.mutate(
             { folderId: pendingRenameFolder.id, names },
-            { onSuccess: () => setPendingRenameFolder(null) },
+            {
+              onSuccess: () => {
+                setPendingRenameFolder(null);
+                showToast(t("folder.renameSuccess"), "success");
+              },
+              onError: () => showToast(t("folder.renameError"), "error"),
+            },
           );
         }}
       />
@@ -240,9 +280,12 @@ function FolderTreeNode({
   onDeleteRequest,
   onRenameRequest,
   onMoveRequest,
+  itemRef,
+  dragHandleRef,
+  dragging,
 }: {
   hotelId: number;
-  folder: FolderDto;
+  folder: BrowseFolderDto;
   depth: number;
   expanded: Set<number>;
   onToggle: (id: number) => void;
@@ -254,12 +297,31 @@ function FolderTreeNode({
   onDeleteRequest: (folder: { id: number; names: FolderNames }) => void;
   onRenameRequest: (folder: { id: number; names: FolderNames }) => void;
   onMoveRequest: (folder: { id: number; names: FolderNames }) => void;
+  // This node's own position within ITS parent's sibling list (root list or
+  // another node's children list) — measured/dragged by the PARENT's
+  // useDragReorder instance, not this node's own (see childDrag below, which
+  // is instead about THIS node's children).
+  itemRef?: (node: View | null) => void;
+  dragHandleRef?: (node: View | null) => void;
+  dragging?: boolean;
 }) {
   const isExpanded = expanded.has(folder.id);
   const { data } = useBrowseHotel(hotelId, folder.id, isExpanded);
   const children = data?.folders ?? [];
   const { locale } = useLanguage();
   const displayName = resolveFolderName(folder, locale);
+
+  // This node's OWN children get their own reorder scope (parentFolderId:
+  // folder.id) — distinct from `itemRef`/`dragHandleRef` above, which place
+  // THIS node inside its parent's list.
+  const reorderChildren = useReorderFolders(hotelId, folder.id);
+  const childDrag = useDragReorder({
+    items: children,
+    getId: (f) => f.id,
+    onReorder: (orderedIds) => reorderChildren.mutate(orderedIds),
+    layout: "list",
+    enabled: !!isAdmin,
+  });
 
   return (
     <>
@@ -268,6 +330,7 @@ function FolderTreeNode({
         depth={depth}
         selected={selectedFolderId === folder.id}
         expanded={isExpanded}
+        photoCount={folder.photoCount}
         onPress={() => onSelect(folder.id)}
         onTogglePress={() => onToggle(folder.id)}
         onDownload={() => onDownload(folder.id)}
@@ -275,9 +338,13 @@ function FolderTreeNode({
         onDelete={isAdmin ? () => onDeleteRequest({ id: folder.id, names: folder }) : undefined}
         onRename={isAdmin ? () => onRenameRequest({ id: folder.id, names: folder }) : undefined}
         onMove={isAdmin ? () => onMoveRequest({ id: folder.id, names: folder }) : undefined}
+        showDownload={!isAdmin}
+        itemRef={itemRef}
+        dragHandleRef={dragHandleRef}
+        dragging={dragging}
       />
       {isExpanded
-        ? children.map((child) => (
+        ? childDrag.items.map((child) => (
             <FolderTreeNode
               key={child.id}
               hotelId={hotelId}
@@ -293,6 +360,9 @@ function FolderTreeNode({
               onDeleteRequest={onDeleteRequest}
               onRenameRequest={onRenameRequest}
               onMoveRequest={onMoveRequest}
+              itemRef={childDrag.getItemRef(child.id)}
+              dragHandleRef={isAdmin ? childDrag.getHandleRef(child.id) : undefined}
+              dragging={childDrag.draggingId === child.id}
             />
           ))
         : null}
@@ -318,33 +388,34 @@ function GuideLines({ depth }: { depth: number }) {
   );
 }
 
-// A small two-tone folder silhouette (tab + body), scaled down for a tree
-// row rather than a grid tile.
-function FolderGlyph() {
+// Font Awesome 5 Free (solid) "folder" / "folder-open". Both glyphs exist in
+// the Free solid set, so no Pro font is involved. This replaces a hand-drawn
+// View silhouette whose "open" variant never actually read as an open folder.
+const FOLDER_GLYPH_SIZE = 14; // in line with the row's other 14-16px glyphs
+const FOLDER_GLYPH_BOX = 18; // see note below
+
+// The fixed-size, centered box is deliberate on two counts:
+//   1. @expo/vector-icons renders an empty <Text /> until it has loaded its
+//      font (async, see createIconSet in the package) — including during the
+//      static web prerender — so an unsized glyph would pop the label sideways
+//      on hydration.
+//   2. "folder-open" is a wider glyph than "folder" (576 vs 512 viewBox
+//      units), which would otherwise nudge the label on every expand/collapse.
+function FolderGlyph({ selected }: { selected: boolean }) {
   return (
-    <View style={{ width: 14, height: 11 }}>
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: 7,
-          height: 3,
-          borderTopLeftRadius: 2,
-          borderTopRightRadius: 2,
-          backgroundColor: ACCENT_ICON_HEX,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 2,
-          width: 14,
-          height: 9,
-          borderRadius: 2,
-          backgroundColor: ACCENT_ICON_HEX,
-        }}
+    <View
+      style={{
+        width: FOLDER_GLYPH_BOX,
+        height: FOLDER_GLYPH_BOX,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <FontAwesome5
+        name={selected ? "folder-open" : "folder"}
+        solid
+        size={FOLDER_GLYPH_SIZE}
+        color={ACCENT_ICON_HEX}
       />
     </View>
   );
@@ -355,6 +426,7 @@ function TreeRow({
   depth,
   selected,
   expanded,
+  photoCount,
   onPress,
   onTogglePress,
   onDownload,
@@ -362,11 +434,22 @@ function TreeRow({
   onDelete,
   onRename,
   onMove,
+  showDownload,
+  itemRef,
+  dragHandleRef,
+  dragging,
 }: {
   label: string;
   depth: number;
   selected: boolean;
   expanded?: boolean;
+  // Recursive photo count for this folder + all its nested subfolders —
+  // undefined for the hotel/root row (which has no FolderDto of its own;
+  // the whole-hotel total is already shown elsewhere on the page, see
+  // plan.md's "Web-optimize" / hotel list sections). Shown even when 0 —
+  // in a navigation tree, "this whole branch is empty" is useful signal,
+  // unlike the hotel-card treatment elsewhere which hides zero.
+  photoCount?: number;
   onPress: () => void;
   onTogglePress?: () => void;
   onDownload: () => void;
@@ -374,15 +457,32 @@ function TreeRow({
   onDelete?: () => void;
   onRename?: () => void;
   onMove?: () => void;
+  // Admin's hotel-content page manages files rather than consuming them, so
+  // it hides download entirely; the public hotel page keeps it, positioned
+  // to the right of the name instead of the old before-the-chevron spot.
+  showDownload: boolean;
+  // Drag-to-reorder — undefined `dragHandleRef` (the root/hotel row, or any
+  // row rendered for a non-admin) simply omits the handle glyph.
+  itemRef?: (node: View | null) => void;
+  dragHandleRef?: (node: View | null) => void;
+  dragging?: boolean;
 }) {
   const { t } = useLanguage();
   return (
     <Pressable
+      ref={itemRef}
       onPress={onPress}
       className={`relative flex-row items-center gap-1.5 pr-2 rounded-md border border-ink-900/10 ${
         selected ? ACCENT_SELECTED_BG : "bg-paper/90"
       }`}
-      style={[{ paddingLeft: 8 + depth * INDENT, height: ROW_HEIGHT }, ROW_SHADOW]}
+      style={[
+        { paddingLeft: 8 + depth * INDENT, height: ROW_HEIGHT },
+        ROW_SHADOW,
+        // Dimmed to read as an empty "hole" left behind by the tile that's
+        // now floating under the cursor (see useDragReorder's ghost clone) —
+        // it still slides via the shared FLIP animation like any sibling.
+        dragging ? { opacity: 0.3 } : null,
+      ]}
     >
       <GuideLines depth={depth} />
       {selected ? (
@@ -391,20 +491,13 @@ function TreeRow({
           style={{ backgroundColor: ACCENT_HEX }}
         />
       ) : null}
-      {/* Download icon — always visible, at the start of the row (before chevron) */}
-      <Tooltip label={t("folder.download")}>
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            if (!downloading) onDownload();
-          }}
-          hitSlop={6}
-          className="w-6 h-6 rounded-full items-center justify-center"
-          style={{ backgroundColor: ACCENT_HEX }}
-        >
-          {downloading ? <ActivityIndicator size="small" color="#fff" /> : <DownloadIcon color="#fff" />}
-        </Pressable>
-      </Tooltip>
+      {dragHandleRef ? (
+        <Tooltip label={t("common.dragToReorder")}>
+          <View ref={dragHandleRef} className="w-4 h-5 items-center justify-center">
+            <DragHandleIcon color="#8a7f6f" />
+          </View>
+        </Tooltip>
+      ) : null}
       {onTogglePress ? (
         <Pressable
           onPress={(e) => {
@@ -419,10 +512,38 @@ function TreeRow({
       ) : (
         <View className="w-4" />
       )}
-      {depth > 0 ? <FolderGlyph /> : null}
+      {depth > 0 ? <FolderGlyph selected={selected} /> : null}
       <Body numberOfLines={1} className={`flex-1 ${selected ? `${ACCENT_TEXT} font-semibold` : "text-ink-700"}`}>
         {label}
       </Body>
+      {/* Recursive per-folder photo count — icon + bare number (kept compact
+          for a dense, deeply-indented row), full phrase discoverable via the
+          tooltip. Sits between the name and the trailing action icons. */}
+      {typeof photoCount === "number" ? (
+        <Tooltip label={t("hotelList.photoCount", { count: photoCount })}>
+          <View className="flex-row items-center gap-1">
+            <CameraIcon />
+            <Muted>{photoCount}</Muted>
+          </View>
+        </Tooltip>
+      ) : null}
+      {/* Download sits to the right of the name — public hotel page only;
+          admin's content-management view hides it entirely (bkz. showDownload). */}
+      {showDownload ? (
+        <Tooltip label={t("folder.download")}>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              if (!downloading) onDownload();
+            }}
+            hitSlop={6}
+            className="w-6 h-6 rounded-full items-center justify-center"
+            style={{ backgroundColor: ACCENT_HEX }}
+          >
+            {downloading ? <ActivityIndicator size="small" color="#fff" /> : <DownloadIcon color="#fff" />}
+          </Pressable>
+        </Tooltip>
+      ) : null}
       {/* Admin-only actions (rename/move/delete) live in one kebab-triggered
           menu instead of three always-visible icons, so the row's chrome no
           longer squeezes the folder name into an ellipsis. Download stays a

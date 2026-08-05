@@ -69,6 +69,7 @@
     <Build Include="Tables\EmailSettings.sql" />
     <Build Include="Tables\AuditLogs.sql" />
     <Build Include="Tables\RolePermissions.sql" />
+    <Build Include="Tables\EntityChangeLogs.sql" />
   </ItemGroup>
   <ItemGroup>
     <PostDeploy Include="Scripts\Script.PostDeployment.sql" />

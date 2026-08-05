@@ -20,6 +20,9 @@ interface FolderPickerTreeProps {
   excludeFolderId?: number;
   // Freezes every row while the caller's move mutation is in flight.
   disabled?: boolean;
+  // The currently selected folder id, if any. `undefined` = nothing selected,
+  // `null` = root folder selected, a number = that folder id.
+  selectedFolderId?: number | null;
   onSelect: (folderId: number | null) => void;
 }
 
@@ -27,7 +30,13 @@ interface FolderPickerTreeProps {
 // (expand a node → fetch its children), but rows carry no download/delete/
 // rename/move actions — pressing a row just picks it as the destination.
 // A synthetic "root" row on top stands for parentFolderId = null.
-export function FolderPickerTree({ hotelId, excludeFolderId, disabled, onSelect }: FolderPickerTreeProps) {
+export function FolderPickerTree({
+  hotelId,
+  excludeFolderId,
+  disabled,
+  selectedFolderId,
+  onSelect,
+}: FolderPickerTreeProps) {
   const { t } = useLanguage();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -48,6 +57,7 @@ export function FolderPickerTree({ hotelId, excludeFolderId, disabled, onSelect 
         label={t("folder.rootFolder")}
         depth={0}
         disabled={disabled}
+        selected={selectedFolderId === null}
         onPress={() => onSelect(null)}
       />
       {rootFolders.map((folder) => (
@@ -60,6 +70,7 @@ export function FolderPickerTree({ hotelId, excludeFolderId, disabled, onSelect 
           onToggle={toggle}
           excludeFolderId={excludeFolderId}
           disabled={disabled}
+          selectedFolderId={selectedFolderId}
           onSelect={onSelect}
         />
       ))}
@@ -75,6 +86,7 @@ function PickerNode({
   onToggle,
   excludeFolderId,
   disabled,
+  selectedFolderId,
   onSelect,
 }: {
   hotelId: number;
@@ -84,6 +96,7 @@ function PickerNode({
   onToggle: (id: number) => void;
   excludeFolderId?: number;
   disabled?: boolean;
+  selectedFolderId?: number | null;
   onSelect: (folderId: number | null) => void;
 }) {
   const { locale } = useLanguage();
@@ -98,6 +111,7 @@ function PickerNode({
         label={resolveFolderName(folder, locale)}
         depth={depth}
         disabled={disabled || isExcluded}
+        selected={selectedFolderId === folder.id}
         onPress={() => onSelect(folder.id)}
         onTogglePress={isExcluded ? undefined : () => onToggle(folder.id)}
         expandedState={isExpanded}
@@ -113,6 +127,7 @@ function PickerNode({
               onToggle={onToggle}
               excludeFolderId={excludeFolderId}
               disabled={disabled}
+              selectedFolderId={selectedFolderId}
               onSelect={onSelect}
             />
           ))
@@ -125,6 +140,7 @@ function PickerRow({
   label,
   depth,
   disabled,
+  selected,
   onPress,
   onTogglePress,
   expandedState,
@@ -132,6 +148,7 @@ function PickerRow({
   label: string;
   depth: number;
   disabled?: boolean;
+  selected?: boolean;
   onPress: () => void;
   onTogglePress?: () => void;
   expandedState?: boolean;
@@ -142,7 +159,12 @@ function PickerRow({
       className={`flex-row items-center gap-1.5 pr-2 rounded-md border border-ink-900/10 ${
         disabled ? "bg-ink-900/5 opacity-50" : "bg-paper/90"
       }`}
-      style={{ paddingLeft: 8 + depth * INDENT, height: ROW_HEIGHT }}
+      style={{
+        paddingLeft: 8 + depth * INDENT,
+        height: ROW_HEIGHT,
+        borderColor: selected ? "#B8903F" : undefined,
+        borderWidth: selected ? 2 : undefined,
+      }}
     >
       {onTogglePress ? (
         <Pressable

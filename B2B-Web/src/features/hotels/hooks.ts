@@ -80,3 +80,13 @@ export function useDeleteHotel() {
     },
   });
 }
+
+export function useRemoveHotelLogo(hotelId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => apiClient.delete(`/hotels/${hotelId}/logo`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hotels"] });
+    },
+  });
+}

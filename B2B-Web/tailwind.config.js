@@ -44,9 +44,13 @@ module.exports = {
         // visible watermark instead of blending into an identical fill.
         "light-sand": "#F7F2EE",
       },
+      // Single Poppins family for the whole app — "serif" is not a different
+      // typeface, just the heavier (SemiBold) Poppins weight used for
+      // headings (Heading/SectionTitle), matching the old Inter/Playfair
+      // regular-vs-display-weight split without introducing a second font.
       fontFamily: {
-        sans: ["Inter"],
-        serif: ["PlayfairDisplay"],
+        sans: ["Poppins"],
+        serif: ["Poppins_600SemiBold"],
       },
     },
   },

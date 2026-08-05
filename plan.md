@@ -241,6 +241,19 @@ tutarlılık için aynı IP kullanıldı).
 > bu komut frontend'i de kısa süreliğine kesintiye uğratır, 2026-07-15
 > öncesi sadece API etkilenirdi).
 >
+> **2026-07-29 — bu makinedeki Claude Code kabuğu IIS'i yönetemiyor**:
+> `Import-Module WebAdministration` / `Stop-WebAppPool` bu ortamdaki
+> (yükseltilmemiş) PowerShell oturumunda "Process should have elevated
+> status to access IIS configuration data" ile başarısız oluyor — yani bir
+> ajan oturumu `dev.b2b` pool'unu kendi başına durduramaz/başlatamaz, kilitli
+> `bin\` klasörüne asla build alamaz. **Derlemeyi doğrulamak için** (pool'a
+> hiç dokunmadan) `dotnet build B2B.API -o <başka bir klasör>` kullanın —
+> `-o` çıktıyı `bin\`'in dışına yönlendirir, kilit sorunu hiç oluşmaz; bu
+> sadece derleme doğrulaması sağlar, IIS'teki çalışan uygulamayı GÜNCELLEMEZ
+> (canlı testin gerçek `dev.b2b/b2b.api`'ye yansıması için pool'u
+> durdurma/build/başlatma döngüsünü hâlâ kullanıcının kendisi yapması
+> gerekir).
+>
 > **2026-07-12 — (ARTIK GEÇERSİZ, tarihsel) `/b2b` path-tabanlı frontend
 > export'u**: O tarihte `/b2b` Application'ı `EXPO_PUBLIC_BASE_PATH=/b2b`
 > override'ıyla export edilen `dist/`'i serve ediyordu. **2026-07-14'te bu
@@ -594,13 +607,15 @@ B2B.API/
 | `AuthService` / `TokenService` | Login, JWT access + refresh token, şifremi-unuttum/sıfırlama (token `PasswordResetToken` tablosunda, TTL `Jwt:PasswordResetTtlMinutes`), yeni kullanıcı için "hoş geldin + şifre belirle" e-postası |
 | `UserService` | Kullanıcı CRUD, BCrypt hash. Yönetici/Kullanıcı Sistem Yöneticisi hesaplarını göremez/düzenleyemez/atayamaz (bu koruma **yapılandırılamaz**, kod içinde sabit) |
 | `HotelService` | Otel CRUD, slug üretimi, logo yükleme |
-| `FolderService` | İç içe klasör CRUD, **materialized path** (`Folder.Path`, örn. `/1/4/9/`). `MoveAsync` (taşıma) kendi altına/soyuna taşımayı `parent.Path.StartsWith(folder.Path)` ile reddeder, taşınan klasör + tüm alt ağacının `Path`'ini tek `SaveChangesAsync` içinde yeniden yazar — kodda `Path`'i toplu güncelleyen tek yer burası (`DeleteAsync` sadece okur, hiç yazmaz) |
-| `FileService` | Dosya yükleme, MIME whitelist + magic-byte doğrulama (`FileTypeSniffer`). `SaveUploadedFilesAsync` istek başına hepsi-ya-da-hiçbiri (ilk geçersiz dosyada throw) — 2026-07-20'den beri sorun değil çünkü frontend dosya başına ayrı POST atıyor (bkz. bölüm 1.1'deki 2026-07-20 notu); hata kodları (`unsupported_mime_type`/`content_mismatch`) `ApiException.Code` üzerinden taşınır. Boyut sınırı yoktur — Kestrel/IIS limitleri (2.1 GB) devrede. **Resim yüklemede thumbnail oluşturma** (2026-07-20): `Kind == Image` ise, ImageSharp (SixLabors 3.1.11) ile 400px genişlik, orijinal aspect ratio koruyan, JPEG %85 kalitesiyle bir thumbnail oluşturulur → `storage/hotels/{hotelId}/thumbs/{uuid}-thumb.jpg` — bu mekanizma tarayıcı/cihazlarda ilk sayfa açma performansını iyileştirir (küçük thumbnail browse sırasında, tam boyut tıklandığında). `RenameAsync`/`MoveAsync`: sadece DB kolonu (`OriginalName`/`FolderId`) değişir, `StoredFileName`/fiziksel dosya hiç dokunulmaz (storage otel-bazlı düz, klasör hiyerarşisi sadece DB'de) |
+| `FolderService` | İç içe klasör CRUD, **materialized path** (`Folder.Path`, örn. `/1/4/9/`). `MoveAsync` (taşıma) kendi altına/soyuna taşımayı `parent.Path.StartsWith(folder.Path)` ile reddeder, taşınan klasör + tüm alt ağacının `Path`'ini tek `SaveChangesAsync` içinde yeniden yazar — kodda `Path`'i toplu güncelleyen tek yer burası (`DeleteAsync` sadece okur, hiç yazmaz). **Öncelik sırası** (2026-07-29): `Folder.SortOrder` artık gerçekten kullanılıyor — `CreateAsync` yeni klasörü kardeş sayısına göre sona ekler, `MoveAsync` taşınan klasörü hedef kapsamın sonuna (eski `SortOrder`'ı değil, hedefteki kardeş sayısını) atar, yeni `ReorderAsync(hotelId, parentFolderId, orderedIds)` bir kapsamdaki TÜM kardeşleri `orderedIds` sırasına göre 0..n-1'e sıkı şekilde yeniden yazar (kısmi/tekil güncelleme yok, id kümesi birebir eşleşmezse 400) |
+| `FileService` | Dosya yükleme, MIME whitelist + magic-byte doğrulama (`FileTypeSniffer`). `SaveUploadedFilesAsync` istek başına hepsi-ya-da-hiçbiri (ilk geçersiz dosyada throw) — 2026-07-20'den beri sorun değil çünkü frontend dosya başına ayrı POST atıyor (bkz. bölüm 1.1'deki 2026-07-20 notu); hata kodları (`unsupported_mime_type`/`content_mismatch`) `ApiException.Code` üzerinden taşınır. Boyut sınırı yoktur — Kestrel/IIS limitleri (2.1 GB) devrede. **Resim yüklemede thumbnail oluşturma** (2026-07-20): `Kind == Image` ise, ImageSharp (SixLabors 3.1.11) ile 400px genişlik, orijinal aspect ratio koruyan, JPEG %85 kalitesiyle bir thumbnail oluşturulur → `storage/hotels/{hotelId}/thumbs/{uuid}-thumb.jpg` — bu mekanizma tarayıcı/cihazlarda ilk sayfa açma performansını iyileştirir (küçük thumbnail browse sırasında, tam boyut tıklandığında). `RenameAsync`/`MoveAsync`: sadece DB kolonu (`OriginalName`/`FolderId`) değişir, `StoredFileName`/fiziksel dosya hiç dokunulmaz (storage otel-bazlı düz, klasör hiyerarşisi sadece DB'de). **Öncelik sırası** (2026-07-29): yeni `MediaFile.SortOrder` kolonu — `SaveUploadedFilesAsync` bir istekteki dosyaları hedef klasörün mevcut kardeş sayısından başlayarak ardışık atar (sona ekleme, aralarındaki sıra korunur), `MoveAsync`/`MoveManyAsync` taşınan dosya(ları) hedef klasörün sonuna ekler (eski `SortOrder` yeni kardeşler arasında rastgele bir yere düşmesin diye), yeni `ReorderAsync(hotelId, folderId, orderedIds)` `FolderService.ReorderAsync` ile birebir aynı desen. `FolderService.BrowseHotelAsync`'teki dosya sıralaması `CreatedAt` azalandan `OrderBy(SortOrder).ThenByDescending(CreatedAt)`'e değişti (eski dosyalar hep `SortOrder=0` ile başladığı için `CreatedAt` tie-break'i eski davranışı korur) |
 | `ZipService` | Toplu indirme planı: `{fileIds}` VEYA `{folderId, includeSubfolders}` — **`folderId=null` ile "tüm otel recursive" desteklenmiyor**, kök seviye indirme her zaman `fileIds` listesiyle yapılmalı (frontend bunu bu şekilde çağırıyor) |
 | `StorageService` | `storage/hotels/<hotelId>/<uuid>.<ext>` düz saklama |
 | `EmailSender` / `EmailSettingsService` | SMTP ayarları **DB'de** (`EmailSettings` tablosu, admin panelinden düzenlenir — appsettings'te değil); e-posta gönderimi bu ayarları okur |
 | `AuditLogService` / `AuditLogActionFilter` | Global MVC filter — `Kullanıcı`/`Yönetici` rolünün her mutating (POST/PUT/PATCH/DELETE) isteğini loglar; **Sistem Yöneticisi'nin kendi işlemleri bilinçli olarak loglanmıyor** |
 | `PermissionService` / `RequirePermissionAttribute` | Dinamik rol-izin sistemi (bkz. 3.2) |
+| `LocaleSuggestionService` | `GET /api/locale/suggest`'in arkasındaki mantık — `Connection.RemoteIpAddress` (aynı kaynak, `AuditLogActionFilter` ile birebir; `X-Forwarded-For` hiç güvenilmiyor) private/loopback ise doğrudan `null`, public ise `ip-api.com` üzerinden ücretsiz/anahtarsız bir GeoIP sorgusuyla ülke koduna bakıp TR/DE-AT-CH/RU'yu tr/de/ru'ya eşliyor, geri kalan her şey `null`. **Bu projenin ilk giden (outbound) üçüncü taraf HTTP bağımlılığı** — `Program.cs`'e ilk kez `AddHttpClient()` eklendi. Kasıtlı olarak yumuşak/kritik-olmayan bağımlılık: 2 saniyelik timeout, her hata modu (timeout/5xx/parse hatası) sessizce `null`'a düşer, asla `ExceptionHandlingMiddleware`'e patlamaz — SGAPPSRV'nin giden internet erişimi bir gün kısıtlanırsa bu uç nokta hatasız şekilde "öneri yok" davranışına döner |
+| `ChangeHistoryService` | Rol-bağımsız rename/move geçmişi + undo (bkz. bölüm 5.2 — **Çöp Kutusu**). `AuditLog`'dan ayrı: `AuditLog` Sistem Yöneticisi'nin işlemlerini kasıtlı atlar, bu tablo atlamaz (undo herkesin işlemi için çalışmalı). `UndoAsync` `EntityChangeLog.PreviousValueJson`'ı deserialize edip aynı `FolderService.RenameAsync/MoveAsync`/`FileService.RenameAsync/MoveAsync`'i tekrar çağırarak geri alır — bu da kendi geri-alma işlemini normal şekilde yeniden loglar (bilinçli, "undo'nun undo'su" mümkün) |
 
 ### Veri modeli (özet)
 ```
@@ -609,13 +624,18 @@ User              Id, Username, Email(nullable, unique index), PasswordHash, Dis
 RefreshToken      Id, UserId, TokenHash, ExpiresAt, RevokedAt
 PasswordResetToken Id, UserId, TokenHash, ExpiresAt, UsedAt
 Hotel             Id, Name, Slug, Description, IsPublished, SortOrder, LogoFileId
-Folder            Id, HotelId, ParentFolderId, Name, Path(materialized), SortOrder
-MediaFile         Id, HotelId, FolderId, Kind(Image|Video|Logo|Document), OriginalName,
-                  StoredFileName, MimeType, SizeBytes, UploadedById, ThumbnailFileName(nullable)
+Folder            Id, HotelId, ParentFolderId, Name, Path(materialized), SortOrder,
+                  IsDeleted, DeletedAt(nullable), DeletedById(nullable) — bkz. 5.2
+MediaFile         Id, HotelId, FolderId, SortOrder, Kind(Image|Video|Logo|Document), OriginalName,
+                  StoredFileName, MimeType, SizeBytes, UploadedById, ThumbnailFileName(nullable),
+                  IsDeleted, DeletedAt(nullable), DeletedById(nullable) — bkz. 5.2
 EmailSettings     Id(tek satır), SmtpHost, SmtpPort, SmtpUsername, SmtpPassword, FromAddress,
                   FromName, EnableSsl
 AuditLog          Id, UserId, Action, EntityType, EntityId, Details, StatusCode, CreatedAt
 RolePermission    Id, Role(Manager|Staff — Admin hiç satır almaz), PermissionKey
+EntityChangeLog   Id, HotelId, EntityType(Folder|File), EntityId(FK yok — satır sonradan
+                  purge edilebilir), ChangeType(Rename|Move), PreviousValueJson, ChangedById,
+                  ChangedAt — bkz. 5.2
 ```
 
 ### 3.2. Dinamik rol/izin sistemi ("Rol Yetkileri")
@@ -648,6 +668,9 @@ dizisi (`GET /api/auth/me` her zaman güncel listeyi döner), UI'da
 POST   /api/auth/login | /refresh | /logout | /forgot-password | /reset-password
 GET    /api/auth/me                   [authenticated] — permissions[] dahil
 
+GET    /api/locale/suggest            public — ziyaretçinin WAN IP'sine göre önerilen dil
+                                       ({ locale: "tr"|"en"|"de"|"ru"|null }), bkz. bölüm 4 i18n
+
 GET    /api/hotels                    public — yayında olan oteller (SortOrder'a göre)
 GET    /api/hotels/admin/all          [hotels.manage]
 POST/PATCH/logo                       [hotels.manage] (PATCH içindeki IsPublished değişimi ayrıca [hotels.publish] ister)
@@ -656,11 +679,19 @@ DELETE /api/hotels/:id                [hotels.delete]
 GET    /api/hotels/:hotelId/browse?folderId=  public — o klasördeki alt klasör+dosyalar (lazy, tek seviye)
 POST   /api/hotels/:hotelId/files     [hotels.manage] — multipart, birden çok dosya
 
-POST/PATCH/DELETE /api/folders        [hotels.manage] — PATCH {id} rename (Name), PATCH {id}/move taşıma (NewParentFolderId)
+POST/PATCH/DELETE /api/folders        [hotels.manage] — PATCH {id} rename (Name), PATCH {id}/move taşıma (NewParentFolderId), DELETE artık soft delete (bkz. 5.2)
+PATCH  /api/folders/reorder           [hotels.manage] — {hotelId, parentFolderId, orderedIds[]} — bir kapsamdaki TÜM kardeşleri yeniden sıralar
 PATCH  /api/files/:id                 [hotels.manage] — rename (OriginalName; StoredFileName/fiziksel dosya değişmez)
 PATCH  /api/files/:id/move            [hotels.manage] — taşıma (FolderId)
-DELETE /api/files/:id                 [hotels.manage]
+PATCH  /api/files/reorder             [hotels.manage] — {hotelId, folderId, orderedIds[]} — bkz. yukarısı
+DELETE /api/files/:id                 [hotels.manage] — artık HARD DELETE değil, soft delete (bkz. 5.2)
 GET    /api/files/:id/download|/view|/thumbnail  public — Range destekli / satır içi görüntüleme (thumbnail sadece resimler için, 400px JPEG)
+
+GET    /api/trash?hotelId=            [hotels.manage] — silinmiş klasör+dosya listesi (bkz. 5.2)
+POST   /api/trash/folders/:id/restore | /api/trash/files/:id/restore  [hotels.manage]
+DELETE /api/trash/folders/:id | /api/trash/files/:id  [hotels.delete] — KALICI silme (gerçek hard delete)
+GET    /api/history?hotelId=&page=&pageSize=  [hotels.manage] — rename/move geçmişi (bkz. 5.2)
+POST   /api/history/:id/undo          [hotels.manage] — geri al
 
 POST/GET /api/download/zip            public — {fileIds[]} veya {folderId, includeSubfolders}
 
@@ -744,8 +775,10 @@ app/forgot-password.tsx / reset-password.tsx  Şifremi unuttum akışı
 app/(public)/_layout.tsx                 Müşteri kabuğu: HotelPanel (sol menü) + Header + Slot + Footer
 app/(public)/index.tsx                   "Hoş geldiniz" + otel kartları (duyarlı grid)
 app/(public)/hotel/[hotelId].tsx         FolderBrowser (boundedHeight — sayfa değil, panel içi scroll)
-app/admin/_layout.tsx                    Admin kabuğu: masaüstünde SOL dikey nav + LanguageSwitcher,
-                                          mobilde üst yatay bar; auth guard
+app/admin/_layout.tsx                    Admin kabuğu: TEK üst yatay bar (nav + LanguageSwitcher +
+                                          kullanıcı adı + çıkış) — her ekran genişliğinde aynı, ayrı
+                                          bir masaüstü sol sidebar varyantı YOK (bkz. 2026-08-04 notu
+                                          bölüm 4 sonunda); auth guard
 app/admin/index.tsx                      Otel listesi (kart başına Düzenle→modal, Sil, tıkla→içerik sayfası)
 app/admin/hotels/new.tsx                 Yeni otel formu
 app/admin/hotels/[hotelId]/index.tsx     SADECE içerik/dosya yönetimi (otel bilgisi formu YOK — bkz. aşağı)
@@ -770,6 +803,22 @@ kart zemini), `brass` (50-700, **tek accent/seçili-durum rengi** — eskiden
 mavi/sapphire kullanılan her yer artık brass), `sand` (#DFCDBE, bg.svg'nin
 çizgi rengi), `light-sand` (#F7F2EE, sayfa zemini — sand'dan bir ton açık,
 yoksa illüstrasyon zeminle aynı renkte kaybolur).
+
+**Font: tek aile, Poppins (2026-07-29 — eskiden Inter+Playfair Display'den
+geçildi).** Kullanıcı önce "Avenir" istedi, ama Avenir lisanslı (Apple/
+Linotype) olduğu ve serbest kaynaktan sağlanamadığı için **Poppins**'e
+(Google Fonts, `@expo-google-fonts/poppins`) karar verildi. Eskiden
+`tailwind.config.js`'teki `fontFamily.sans` (Inter, gövde metni) ve
+`fontFamily.serif` (Playfair Display 600SemiBold, `Heading`/`SectionTitle`
+başlıkları ve `Header.tsx`'teki "Stone Group" logosu) İKİ AYRI typeface'ti —
+artık ikisi de **TEK Poppins ailesinin** farklı ağırlıkları: `sans: ["Poppins"]`
+(Poppins_400Regular) / `serif: ["Poppins_600SemiBold"]`. `app/_layout.tsx`'teki
+`useFonts` çağrısı üç ağırlık yüklüyor (`Poppins`→400Regular, `Poppins_500Medium`,
+`Poppins_600SemiBold` — eski Inter_500Medium/600SemiBold ile aynı "yüklü ama
+doğrudan referans verilmeyen" desende, muhtemelen ileride kullanılmak üzere).
+**Kural:** `font-sans`/`font-serif` className'leri projede zaten var olan tek
+yer (`Typography.tsx`, `Header.tsx`) — yeni bir yerde farklı bir typeface
+eklemeyin, tek font ailesi (Poppins) kuralı bilinçli bir karar.
 
 > **2026-07-11 tema tutarlılık turu:** Kullanıcı login sayfasının admin
 > sayfalarıyla aynı görünmediğini fark etti (özellikle butonlar). Kök neden:
@@ -834,6 +883,32 @@ yoksa illüstrasyon zeminle aynı renkte kaybolur).
   yok), `PublicHeader`, login sayfası ve admin nav'da kullanılıyor.
 - `src/components/ui/IconGlyphs.tsx` — View tabanlı ikonlar (göz, indirme,
   chevron) — ekstra ikon kütüphanesi yok.
+  > **2026-08-04 — istisna: `FolderTree.tsx`'teki `FolderGlyph` artık Font
+  > Awesome kullanıyor.** Kullanıcı elle çizilmiş View silüetinin (özellikle
+  > "açık klasör" varyantının) yetersiz göründüğünü belirtip açıkça Font
+  > Awesome Free istedi. Yeni bağımlılık: **`@expo/vector-icons`** (Expo'nun
+  > resmi, managed-workflow uyumlu ikon paketi — `react-native-vector-icons`
+  > DEĞİL, o native linking ister). `FolderGlyph` artık
+  > `import FontAwesome5 from "@expo/vector-icons/FontAwesome5"` (BARREL'DAN
+  > DEĞİL — `@expo/vector-icons`'un ana girişi tüm ikon setlerini eager
+  > require ediyor, deep import sadece FA5 fontlarını bundle'a sokuyor) ile
+  > `solid` stilde `folder`/`folder-open` render ediyor (`selected`'a göre) —
+  > ikisi de Free set'te mevcut, Pro font gerekmiyor. Sabit 18×18 kutu içinde
+  > ortalanmış (font async yüklendiği için boş `<Text/>` ile başlangıçta
+  > kayma olmasın, ve `folder-open` glyph'i `folder`'dan daha geniş olduğu
+  > için expand/collapse'de label kaymasın diye). Font YÜKLEME için
+  > `app/_layout.tsx`'teki merkezi `useFonts`'a EKLEME YAPILMADI (bilinçli
+  > tercih) — `@expo/vector-icons`'un `createIconSet`'i kendi `Font.loadAsync`'ini
+  > kendi `componentDidMount`'ında tetikliyor, otomatik çalışıyor; splash
+  > screen'i bu görece nadir kullanılan glyph için ekstra ~370 KB font
+  > yüzünden bekletmemek için ayrı bırakıldı — ilk render'da kısa bir boş-ikon
+  > karesi görülebilir, rahatsız ederse `...FontAwesome5.font`'u `useFonts`'a
+  > eklemek tek satırlık bir çözüm. **Kural**: bu, projede BİLİNÇLİ OLARAK
+  > tek gerçek ikon-fontu istisnası — yeni bir yere ikon eklerken varsayılan
+  > hâlâ View-tabanlı elle çizim (`IconGlyphs.tsx` deseni); Font Awesome'a
+  > sadece kullanıcı açıkça isterse veya View-tabanlı bir silüetin gerçekten
+  > yetersiz kaldığı (bu vakada olduğu gibi) durumlarda başvurun, projenin
+  > genelini FA'ya taşımaya kalkışmayın.
 
 ### i18n — 4 dil (TR/EN/DE/RU), `src/i18n/`
 
@@ -855,17 +930,88 @@ i18n anahtarına eşleyen map) + `t(...)` kullanılıyor. Tarih/saat formatlama
 da (`audit-logs.tsx`) `locale`'e göre BCP47 tag seçiyor (`tr-TR`/`en-US`/
 `de-DE`/`ru-RU`).
 
+> **2026-07-31 — varsayılan dil `tr`'den `en`'e değişti, IP-tabanlı dil önerisi
+> eklendi.** `DEFAULT_LOCALE` (`translations.ts`) artık `"en"` — hem
+> `LanguageProvider`'ın ilk state'i hem çeviri fallback'i bu değeri kullanıyor.
+> Ayrıca **backend'e yeni, auth gerektirmeyen bir uç nokta eklendi**:
+> `GET {API base}/locale/suggest` → her zaman `200` + `{ locale: "tr"|"en"|
+> "de"|"ru"|null }` (`null` = fikir yok — LAN istemcisi veya IP-coğrafya
+> belirsiz; bu durumda mevcut/varsayılan dil aynen kalır). Bu, `apiUrl.web.ts`
+> ile aynı "isteğin nereden geldiğine göre runtime'da karar ver" desenini
+> farklı bir eksende (hostname yerine ziyaretçi IP'si) tekrarlıyor. Frontend
+> tarafı: yeni **`src/i18n/localeSuggest.{web,native}.ts`** çifti
+> (`languageStorage.{web,native}.ts` ile birebir aynı platform-ayrım deseni)
+> — web sürümü `apiClient.get("/locale/suggest", {timeout:3000})` ile
+> (kendi zaten hostname-tabanlı `API_URL`'i kullanarak, host hardcode YOK)
+> çağırıyor, herhangi bir hata/timeout/malformed cevapta sessizce `null`
+> dönüyor (fail-soft); native sürüm hiç ağ isteği atmadan doğrudan `null`
+> dönüyor (native zaten build-time'da tek backend'e sabit, bkz. `apiUrl.native.ts`).
+> `LanguageContext.tsx`'teki restore effect'i genişletildi: `languageStorage.get()`
+> ile kayıtlı bir tercih varsa eskisi gibi onu kullanıyor; YOKSA
+> `suggestLocale()`'i çağırıp `null` olmayan bir sonucu state'e yazıyor —
+> **bilinçli olarak `languageStorage.set()` ile HİÇ persist edilmiyor**, bu
+> yüzden IP önerisi her oturum/cihazda yeniden değerlendiriliyor, kullanıcının
+> `LanguageSwitcher` üzerinden yaptığı EXPLICIT seçimin aksine "yapışmıyor".
+> **Kural:** bu iki yol (persist edilen explicit seçim vs. persist edilmeyen
+> IP önerisi) `LanguageContext.tsx` içinde net ayrı tutulmalı — IP önerisi
+> yoluna asla `languageStorage.set()` çağrısı eklenmemeli, yoksa bir sonraki
+> oturumda kullanıcının kendi seçimini sessizce ezebilir.
+
 ### Öne çıkan özellikler / desenler
 
+- **Admin nav — tek üst bar, masaüstü sol sidebar kaldırıldı (2026-08-04)**:
+  `app/admin/_layout.tsx` eskiden iki ayrı varyanttı — masaüstünde (`lg:`)
+  sol dikey sidebar (nav üstte, `LanguageSwitcher`+kullanıcı adı+çıkış
+  sidebar'ın ALTINA pinlenmiş), mobilde ayrı bir üst yatay bar (nav +
+  dil + kullanıcı + çıkış hepsi aynı satırda). Kullanıcı nav ve dil
+  seçeneklerinin her zaman sayfanın ENİNDE olmasını istedi — sol sidebar
+  varyantı tamamen kaldırıldı, mobildeki üst-bar deseni (zaten çalışır
+  durumdaydı) artık TEK layout olarak her genişlikte kullanılıyor. Bu
+  admin bölümündeki TÜM route'ları (`Slot` üzerinden) etkiliyor. **Kural**:
+  bu dosyaya yeniden bir "geniş ekranda farklı görünüm" eklemeden önce
+  bu kasıtlı tek-layout kararını göz önünde bulundurun — HotelPanel'deki
+  (`src/features/hotels/HotelPanel.tsx`, public taraf) katlanabilir sol
+  panel bundan tamamen ayrı/ilgisiz bir mekanizma, karıştırmayın.
 - **Duyarlı grid** (`src/lib/useGridColumns.ts`): masaüstü 5, tablet 4, geniş
-  telefon 3, telefon 2 sütun. Saf CSS yüzde tabanlı grid.
+  telefon 3, telefon 2 sütun. Saf CSS yüzde tabanlı grid. **(2026-07-30)**
+  Eşikler artık ham `useWindowDimensions()` genişliği yerine grid'in KENDİ
+  ölçülen konteyner genişliğine uygulanıyor — hook'un dönüş tipi
+  `number`'dan `[columns, onLayout]`'a değişti, çağıran taraf `onLayout`'u
+  grid'i saran `View`'e bağlamak ZORUNDA (bağlamazsa sessizce eski
+  window-genişliği davranışına düşer, hata vermez). Üç kullanım yeri de
+  (`FolderBrowser.tsx` dosya grid'i, `(public)/index.tsx` ve `admin/index.tsx`
+  otel kart grid'i) güncellendi. **Neden**: uygulamadaki her grid sabit
+  genişlikte bir yan panelin (HotelPanel, admin nav rail, FolderBrowser'ın
+  yeniden boyutlandırılabilir ağaç paneli) yanında oturuyor — ham pencere
+  genişliğiyle sütun sayısı, örneğin HotelPanel daraltıldığında (aşağıya
+  bakın) gerçekten boşalan yatay alana hiç tepki vermiyordu (sadece bir eşiği
+  aşan tam pencere resize'ı tepki verirdi). **Kural**: yeni bir grid eklerken
+  `useGridColumns()`'un döndürdüğü `onLayout`'u mutlaka grid'in saran
+  `View`'ine bağlayın, yoksa sütun sayısı o grid'in gerçek genişliğini değil
+  pencere genişliğini izler.
 - **HotelPanel** (`src/features/hotels/HotelPanel.tsx`): masaüstünde SOL
   sidebar'da her otel için bir SATIR (küçük logo solda + otel adı sağda,
   hepsi en uzun otel adına göre ölçülmüş EŞİT genişlikte — `onLayout` ile
   ölçüp `useState`'e yazan iki-fazlı bir render deseni), mobilde yatay
   şerit (pill'ler). Seçili satır **brass** kenarlık + glow ile vurgulanır
   (mavi değil — kullanıcı özellikle "mavi dışında" istedi). Logolarda
-  `BADGE_SHADOW` ile hafif "zeminde duruyor" hissi.
+  `BADGE_SHADOW` ile hafif "zeminde duruyor" hissi. **(2026-07-30) Katla/
+  genişlet düğmesi**: sidebar artık `lg:w-64` (genişletilmiş, isim+logo
+  satırları, logo `w-11`→`w-14`'e büyütüldü) ile `lg:w-24` (daraltılmış,
+  sadece `HotelRailItem` — logo-only, isim `Tooltip` ile hover'da görünür)
+  arasında sağ üstteki bir `NavArrowIcon` düğmesiyle geçiş yapıyor. Mobil
+  `HotelPill` şeridine dokunulmadı. Bu panelin daraltılması yukarıdaki
+  `useGridColumns` container-aware değişikliğiyle birlikte çalışıyor —
+  daraltınca dosya/otel-kart grid'i boşalan alanı gerçekten kullanıyor.
+  **(2026-07-30, aynı gün ikinci tur)** İlk sürüm `localStorage`'da
+  kullanıcının son tercihini hatırlıyordu (`hotelPanelState.ts`,
+  `treePanelWidth.ts` ile aynı desen) ve varsayılan genişletilmişti —
+  kullanıcı "her zaman kapalı gelsin" isteyince bu persistence katmanı
+  TAMAMEN kaldırıldı (dosya silindi): `collapsed` artık her sayfa
+  yüklemesinde sabit `useState(true)` ile başlıyor, oturum içinde düğmeyle
+  açılabiliyor ama yenilemede her seferinde tekrar kapalıya dönüyor. Yeni
+  bir "kullanıcı tercihini hatırla" isteği gelirse `treePanelWidth.ts`
+  deseni yeniden uygulanabilir, ama şu an bilinçli olarak YOK.
 - **FolderBrowser** (`src/features/folders/FolderBrowser.tsx`): hem admin
   hem müşteri tarafında paylaşılan klasör/dosya gezgini. Eski
   breadcrumb+ızgara klasör gezinme kaldırıldı, yerine **`FolderTree`**
@@ -903,6 +1049,18 @@ da (`audit-logs.tsx`) `locale`'e göre BCP47 tag seçiyor (`tr-TR`/`en-US`/
   aynı gerekçe. **Not**: ne backend'de ne frontend'de kardeş isim tekilliği
   kontrolü YOK (create/rename'de de hiç olmadı) — aynı klasörde iki aynı
   isimli alt klasör/dosya olabilir, bilinçli bir tutarlılık kararı.
+  **(2026-07-29) İndirme UI'ı artık admin'de tamamen gizli**: admin
+  (`isAdmin`) içerik yönetiyor, tüketmiyor — bu yüzden `FolderTree`'nin
+  satır-sonu indirme ikonu, `FileCard`'ın grid indirme ikonu/"İndir"
+  butonu ve `MultiSelectToolbar`'ın toplu indirme + "klasörü indir"
+  butonları hepsi `isAdmin`/`showDownload` prop'uyla admin'de render
+  edilmiyor (görüntüle/rename/move/delete admin'de aynen kalıyor). Public
+  tarafta `FolderTree`'nin indirme ikonu da bu turda konum değiştirdi:
+  eskiden chevron'dan ÖNCE (satırın en solunda) idi, artık klasör/otel
+  adının SAĞINDA (`Body` etiketinden hemen sonra, kebab menüsünden önce).
+  **Kural**: yeni bir indirme kontrolü eklerken hem admin/public ayrımını
+  (`showDownload`/`isAdmin` deseni) hem konumunu (public: ad'ın sağı) bu
+  örnekle tutarlı tutun.
   **(2026-07-18 devamı)** İkon-only butonlar (view/download/delete/rename/move)
   için **`src/components/ui/Tooltip.{web,native}.tsx`** eklendi — bu projede
   ilk hover-tooltip deseni. RN'in çekirdek `Pressable` `onHoverIn`/`onHoverOut`'u
@@ -959,6 +1117,108 @@ da (`audit-logs.tsx`) `locale`'e göre BCP47 tag seçiyor (`tr-TR`/`en-US`/
   kalır), `PromptDialog` sadece base'i düzenletir, submit'te uzantı geri
   eklenir. Klasör rename `suffix` vermeden aynı `PromptDialog`'u kullanmaya
   devam ediyor, davranışı değişmedi.
+- **Klasör/dosya öncelik sırası — sürükle-bırak** (2026-07-29): admin'de
+  hem `FolderTree` satırları (her seviye kendi kardeşleri arasında, çapraz
+  seviye sürükleme YOK — klasörler arası taşıma zaten ayrı "taşı" özelliği)
+  hem `FolderBrowser`'ın dosya grid'i sürükle-bırakla yeniden sıralanabiliyor.
+  Kütüphane eklenmedi — yeni paylaşılan `src/lib/dnd/useDragReorder.{web,native}.ts`
+  hook'u, mevcut ağaç/grid resize splitter'ıyla (`FolderBrowser.tsx`) AYNI
+  ham DOM event deseniyle (ref→`HTMLElement`, `mousedown`/`mousemove`/`mouseup`)
+  **web-only** çalışıyor (native'de no-op stub — `Tooltip.web/.native` ile
+  aynı dosya-uzantı deseni); dropzone yüklemesi de zaten aynı gerekçeyle
+  web-only'ydi. Hook iki geometri modu destekliyor: `"list"` (FolderTree —
+  sadece Y ekseninde sıralı satırlar arası konum) ve `"grid"` (dosya grid'i —
+  sarmalayan flex-wrap layout'ta en yakın komşuyu (X+Y) bulup önüne/arkasına
+  yerleştirme). Backend: `Folder.SortOrder` (zaten vardı, hiç kullanılmıyordu)
+  ve yeni `MediaFile.SortOrder` — `PATCH /api/folders/reorder` /
+  `PATCH /api/files/reorder` (bkz. bölüm 3 API uçları) bir kapsamdaki TÜM
+  kardeşleri tek seferde 0..n-1'e yeniden yazıyor. `hooks.ts`'teki
+  `useReorderFolders`/`useReorderFiles`, `useCreateFolder`/`useDeleteFolder`
+  ile AYNI dar `["hotels", hotelId, "browse", <scope>]` invalidation'ını
+  kullanıyor (reorder her zaman tek bir browse kapsamını etkiliyor, taşımanın
+  aksine iki kapsamı birden değil) + `onMutate`'te cache'i hemen yeni sırayla
+  güncelleyip (optimistic) `onSuccess`'te invalidate ediyor, böylece sürükleme
+  sunucu round-trip'ini beklemiyor.
+  > **2026-07-29 (devamı) — sürükleme hiç çalışmıyordu, iki bağımsız bug**
+  > (ilk yayınlandığı gün fark edildi, aynı gün düzeltildi): İlk şüphe
+  > (kullanıcı raporu) tutma kolunun `Pressable` içine iç içe konmasından
+  > kaynaklanan bir event-propagation çakışmasıydı (RNW `Pressable`'ın kendi
+  > responder sistemi `mousedown`'u `document` seviyesinde dinliyor —
+  > incelendi, `node_modules/react-native-web` kaynağından doğrulandı) —
+  > **bu hipotez YANLIŞ çıktı**, gerçek kök nedenler tamamen farklıydı,
+  > gerçek tarayıcıda (headless Chrome + CDP, gerçek `mousedown`/`mousemove`/
+  > `mouseup`) test edilerek bulundu:
+  > 1) **Dosya grid'i**: `FileCard`'daki tutma kolu görünmüyordu/tıklanamıyordu
+  > çünkü YANLIŞ YERDE render ediliyordu — `<Tooltip><View ref={dragHandleRef}
+  > className="absolute top-2 left-2 ...">` deseninde `absolute` doğrudan
+  > Tooltip'in ÇOCUĞUNA konmuştu. `Tooltip.web.tsx`'in kendi sarmalayıcı
+  > `View`'i hiçbir layout stili taşımıyor (sadece `cursor:pointer`) — RNW'nin
+  > her View'a varsayılan verdiği `position:relative` yüzünden bu sarmalayıcı,
+  > `absolute` çocuğun konumlandığı gerçek "containing block" oluyor (istenen
+  > "aspect-square" resim kapsayıcısı değil). Karttaki DİĞER tüm çocuklar
+  > (thumbnail, view/download, rename/move/delete) zaten `absolute` olduğu
+  > için akıştan çıkmış durumda; SADECE Tooltip sarmalayıcısı normal-akış
+  > (in-flow) tek çocuk olarak kalıyor ve flex-column içinde resim karesinin
+  > ALT KENARINA itiliyordu — orada dosya adı etiketiyle hem görsel hem
+  > DOM hit-testing (`elementsFromPoint`) sırasında ÇAKIŞIYORDU (ekran
+  > görüntüsünde dosya adı metninin üzerinde bindirilmiş küçük ikon
+  > kırıntıları olarak görüldü). **Düzeltme**: `absolute top-2 left-2`
+  > artık Tooltip'i SARAN yeni bir dış `View`'de — Tooltip'in kendi çocuğu
+  > sadece `w-6 h-6 rounded-full ...` (konumsuz) — tıpkı rename/move/delete
+  > kümesinin zaten kullandığı "dış absolute wrapper + içeride birden çok
+  > Tooltip" deseni gibi. `Tooltip.web.tsx`'in kendisi DEĞİŞMEDİ (paylaşılan,
+  > başka her tüketici tarafından zaten doğru kullanılıyordu). **Kural**:
+  > `Tooltip`'in DOĞRUDAN çocuğuna `position:absolute` KOYMAYIN — her zaman
+  > Tooltip'i saran ayrı bir `absolute` `View` kullanın.
+  > 2) **Klasör ağacı**: tutma kolu (`TreeRow`, `absolute` DEĞİL, normal
+  > `w-4 h-5` flex item) doğru render oluyordu ve `mousedown`/`mousemove`
+  > sorunsuz tetikleniyordu, ama BAŞKA bir bug'a çarpıyordu: sürüklemeyi
+  > BAŞLATMAK (herhangi bir kardeşin `dragging` prop'unu değiştirip TÜM
+  > kardeş `FolderTreeNode`'ları bir kez daha render'a zorlaması) her
+  > ÇÖKMÜŞ (collapsed) düğümde gizli duran bir sonsuz döngüyü tetikliyordu:
+  > `FolderTreeNode`'un kendi `children = data?.folders ?? []` (yani
+  > `useBrowseHotel(hotelId, folder.id, isExpanded)` çökmüşken `enabled:false`
+  > olduğu için `data` SONSUZA DEK `undefined` kalıyor) her render'da TAZE bir
+  > boş `[]` üretiyor; `useDragReorder`'ın resync `useEffect`'i `[items]`'i
+  > REFERANSA göre karşılaştırdığı için bu taze referans effect'i her seferinde
+  > yeniden tetikliyor, `setLiveItems([])` çağrısı (önceki state'ten referans
+  > olarak farklı) yeni bir render'a yol açıyor, o da yeni bir `[]` üretiyor —
+  > kendi kendini besleyen bir sonsuz döngü ("Maximum update depth exceeded",
+  > gerçek tarayıcıda doğrulandı, sayfa CPU'yu kilitleyip donuyordu).
+  > **Düzeltme**: `useDragReorder.web.ts`'teki resync effect artık `items`
+  > referansı yerine `items.map(getId).join(",")` (içerik bazlı, stabil bir
+  > primitive) bağımlılığı kullanıyor — `?? []` gibi kaynağı `undefined`
+  > olan yerlerde her render'da taze referans üretilmesi artık effect'i
+  > yeniden tetiklemiyor. **Kural**: bir hook'un `useEffect` bağımlılığı bir
+  > ARRAY/OBJECT prop'sa ve o prop çağıran tarafta `x?.y ?? []` gibi bir
+  > fallback'ten geliyorsa (React Query'nin `data` alanı `enabled:false`
+  > iken sonsuza dek `undefined` kalabildiği gibi), bağımlılığı referans
+  > yerine içerikten türetilmiş bir primitive'e çevirin — yoksa "kaynak
+  > veri hiç yok" durumu render başına yeni bir referans üretip sessiz bir
+  > sonsuz döngü tuzağı kurar (sadece bir şey o bileşeni fazladan bir kez
+  > daha render'a zorladığında ateşlenir, o yüzden ilk bakışta görünmez).
+- **Admin araç çubuğu ikiye bölündü** (2026-08-03): `AdminFolderToolbar.tsx`
+  artık tek bir bileşen export etmiyor — `useAdminFolderToolbarState(hotelId,
+  folderId, onFolderDeleted)` (paylaşılan state/mutation hook'u) +
+  `AdminFolderActions` (Yeni Klasör/Web sürümü oluştur/Çöp Kutusu/"Bu klasörü
+  sil") + `AdminFolderDropzone` (sadece sürükle-bırak kutusu + Yükle butonu)
+  export ediyor. Sebep: kullanıcı sürükle-bırak kutusunda SADECE Yükle
+  butonu kalsın, diğer aksiyonlar `FolderBrowser`'ın başlık satırında "Seç"
+  butonunun yanında görünsün istedi — bu iki görsel bölge `adminToolbar`
+  prop'unun tek bir `AdminFolderToolbar` örneğiyle doldurulduğu eski
+  yapıda ayrı DOM konumlarına taşınamıyordu, bu yüzden state hook'u
+  çağıran taraf (`app/admin/hotels/[hotelId]/index.tsx`) tek bir
+  `adminState` üretip iki alt bileşene prop olarak geçiriyor.
+  `FolderBrowser`'a yeni bir `adminActions` slot prop'u eklendi (mevcut
+  `adminToolbar` slot'unun yanına) — başlık satırında `MultiSelectToolbar`
+  ile aynı sarmalayıcı `View` içinde yan yana render ediliyor.
+  `MultiSelectToolbar`'daki "Seç" butonu de bu turda kendi özel
+  `Pressable`+pill stilinden paylaşılan `Button` (`variant="secondary"`)
+  bileşenine çevrildi — artık diğer aksiyon butonlarıyla aynı görünüyor.
+  **Kural**: bu üç parça (hook + iki bileşen) birbirinden bağımsız
+  kullanılmamalı — `AdminFolderActions`/`AdminFolderDropzone` ikisi de
+  AYNI `useAdminFolderToolbarState` çağrısının döndürdüğü `state` nesnesini
+  almalı (ayrı ayrı hook çağırırlarsa state senkronizasyonu bozulur).
 - **Sürükle-bırak yükleme** (`src/features/folders/AdminFolderToolbar.tsx` +
   `dragDropUpload.ts`): dropzone web-only (native'de sadece resim seçici
   buton). Tarayıcının `FileSystemEntry` API'siyle (`webkitGetAsEntry`)
@@ -979,11 +1239,28 @@ da (`audit-logs.tsx`) `locale`'e göre BCP47 tag seçiyor (`tr-TR`/`en-US`/
   video görünümü alıyordu (PDF'ler oynatma butonuyla görünüyordu) — düzeltildi.
   **2026-07-20 — thumbnail iyileştirmesi**: `hasThumbnail` bayrağı `true` ise
   image bileşeni `GET /api/files/{id}/thumbnail` URL'sinden 400px JPEG thumbnail'ı
-  gösterir (tarayıcı cache'leyerek; `Cache-Control: max-age=31536000, immutable`);
-  tıklandığında HER ZAMAN tam boyut `/api/files/{id}/download` açılır. Eski
-  resimler (`hasThumbnail=false`) otomatik olarak `/api/files/{id}/download`'a
-  fallback eder. Bu mekanizma sayfa açma performansını iyileştirir (browse'da
-  küçük thumbnail, detay/zoom'da tam boyut).
+  gösterir (tarayıcı cache'leyerek; `Cache-Control: max-age=31536000, immutable`).
+  Bu mekanizma sayfa açma performansını iyileştirir (browse'da küçük thumbnail).
+  **2026-07-31 düzeltmesi — eski resimlerin fallback'i artık `/download` DEĞİL,
+  `/view`**: `hasThumbnail=false` olan (400px thumbnail'i hiç oluşmamış) eski
+  resimler önceden doğrudan `/api/files/{id}/download`'a (gerçek orijinal,
+  10-20+ MB olabiliyor) düşüyordu — grid'de küçük bir kart göstermek için koca
+  orijinal dosya indiriliyordu. Kök neden `admin/hotels/4?folderId=23` klasörü
+  üzerinden canlı test edilerek bulundu: bu klasördeki görsellerin
+  `WebOptimizedFileId` kopyaları zaten üretilmişti (bkz. bölüm 5.3) ve `/view`
+  uç noktası doğru şekilde küçük kopyayı döndürüyordu (curl ile doğrulandı,
+  288KB), ama grid'in kendi fallback zinciri `/view`'ı hiç denemeden doğrudan
+  `/download`'a atlıyordu. Düzeltme: `fileThumbnailUrl()`'deki fallback
+  `/view`'e çevrildi — `/view` zaten sunucu tarafında `WebOptimizedFileId`
+  varsa onu, yoksa orijinali döner (bkz. 5.3, `ResolveViewFileAsync`), yani bu
+  tek satır hem grid'i hem (zaten `/view` kullanan, bkz. hemen altı)
+  büyütülmüş önizlemeyi aynı substitüsyondan otomatik faydalandırıyor. Tıklanıp
+  büyütülen önizleme (`ImagePreviewModal.tsx`, `downloadFile.viewFileUrl()`)
+  de aynı `/view` uç noktasını kullanıyor — yani artık ne grid ne zoom hiçbir
+  zaman "sadece bir küçük kart/önizleme göstermek için" gerçek orijinali
+  indirmiyor, WebOptimizedFileId kopyası olmayan görüntüler için ikisi de
+  (bilinçli olarak) orijinale düşüyor. **`/download` (gerçek indirme butonu)
+  hâlâ HER ZAMAN orijinali döner, değişmedi.**
 - **İndirme/görüntüleme** (`src/lib/download/downloadFile.{web,native}.ts`):
   platform bazlı. `downloadZip({hotelId, folderId, includeSubfolders})` VEYA
   `{hotelId, fileIds})` — **`folderId` olmadan "tüm otel" indirilemez**,
@@ -1119,3 +1396,191 @@ haldedir. Database publish (`SqlPackage.exe` veya SSDT) kullanıcı tarafından 
 > uyuşmazlık (nullable DB kolonu + non-nullable C# property) sadece o kolonda gerçekten
 > NULL bir satır olduğunda, çalışma zamanında `SqlNullValueException` olarak patlar;
 > derleme zamanında hiçbir uyarı vermez.
+
+## 5.2. Çöp Kutusu (Trash) ve Değişiklik Geçmişi / Undo (2026-07-30)
+
+Sebep: bir kullanıcı toplu seçili resimleri yanlışlıkla kalıcı sildi, geri
+alma yolu yoktu; klasör/dosya rename/move'ları da aynı şekilde geri alınamaz
+haldeydi. İki bağımsız ama ilişkili mekanizma eklendi — **soft delete**
+(Çöp Kutusu) ve **rol-bağımsız rename/move geçmişi** (Undo). Migration:
+`B2B.API/Migrations/20260730120000_AddTrashAndChangeHistory.cs`.
+
+**Soft delete**: `Folder`/`MediaFile`'a `IsDeleted`, `DeletedAt`(nullable),
+`DeletedById`(nullable) eklendi. `FolderService.DeleteAsync`/`FileService.DeleteAsync`
+artık satırı DB'den/diskten SİLMİYOR, sadece bu üç alanı yazıyor — mevcut
+`BrowseHotelAsync` sorguları `IsDeleted == false` filtresi aldı (silinen bir
+öğe normal browse/tree/grid'de bir daha hiç görünmüyor). Gerçek hard delete
+sadece yeni **`PurgeAsync`** ile oluyor (`DELETE /api/trash/...`,
+`[hotels.delete]` — sıradan silmeden daha yüksek bir yetki seviyesi, bilinçli).
+`ListTrashAsync` `IsDeleted == true` olan satırları döner.
+
+**Değişiklik geçmişi**: yeni `EntityChangeLog` tablosu — her `RenameAsync`/
+`MoveAsync` çağrısı (Folder VE File için, `FolderService`/`FileService`
+içinde) kendi işleminden ÖNCEKİ değeri (`FolderRenameSnapshot`/
+`FolderMoveSnapshot`/`FileRenameSnapshot`/`FileMoveSnapshot` — bkz.
+`B2B.API/Models/EntityChangeLog.cs`) JSON'a serialize edip bir satır ekliyor.
+**`AuditLog`'dan kasıtlı olarak ayrı bir tablo**: `AuditLog` Sistem
+Yöneticisi'nin kendi işlemlerini atlıyor (bkz. bölüm 3, `AuditLogService`),
+ama undo HERKESİN (Admin dahil) işlemi için çalışmalı — bu yüzden
+`EntityChangeLog`'a yazma rol bağımsız, hiç atlanmıyor. `ChangeHistoryService.
+UndoAsync` `PreviousValueJson`'ı deserialize edip **aynı `RenameAsync`/
+`MoveAsync`'i tekrar çağırarak** geri alıyor. `EntityId` üzerinde FK YOK —
+kayıt sonradan `PurgeAsync` ile kalıcı silinmiş olabilir, `ChangeHistoryDto`'daki
+`currentName*`/`currentOriginalName` alanları bu durumda `null` döner
+(frontend "kalıcı olarak silindi" notu gösterir).
+
+> **2026-07-31 — undo artık kendi tersini loglamıyor, orijinal satırı siliyor
+> (davranış değişikliği).** İlk sürümde undo, `RenameAsync`/`MoveAsync`'i
+> normal (loglayan) haliyle çağırdığı için geri alma işlemi kendi tersini
+> yeni bir satır olarak ekliyor, eski satır ise yerinde kalıyordu — yani bir
+> undo, geçmiş listesinde İKİ satıra yol açıyordu (eski + tersi). Kullanıcı
+> bunu yanlış buldu: undo'nun beklenen sonucu geçmişten o girdinin tamamen
+> KAYBOLMASI, yeni bir "tersine çevirme" izi bırakmaması. Düzeltme: hem
+> `FolderService.RenameAsync`/`MoveAsync` hem `FileService.RenameAsync`/
+> `MoveAsync`'e sona opsiyonel `bool logChange = true` parametresi eklendi
+> (var olan çağrı yerleri — controller'lar — etkilenmedi, hepsi varsayılanı
+> kullanıyor); `EntityChangeLogs.Add(...)` bloğu `if (logChange)` içine
+> alındı. `ChangeHistoryService.UndoAsync` artık 4 branch'te de
+> `logChange: false` geçiyor, çağrı başarıyla dönünce (`RenameAsync`/
+> `MoveAsync` throw ETMEZSE) orijinal `log` satırını `db.EntityChangeLogs.
+> Remove(log)` ile siliyor. Hedef entity artık yoksa (`NotFound` fırlarsa)
+> silme hiç çalışmıyor — başarısız bir undo denemesi kullanıcının geçmiş
+> satırını kaybetmesine yol açmıyor.
+
+**Frontend** (`B2B-Web`, admin-only): `src/features/folders/TrashHistoryModal.tsx`
+— `AdminFolderToolbar`'daki yeni "Çöp Kutusu" butonuyla açılan, iki sekmeli
+(Button toggle, bu projede Tabs primitive'i yok) bir `Modal`. "Çöp Kutusu"
+sekmesi `useTrash(hotelId)` ile silinen klasör/dosyaları listeler (geri
+yükle herkese açık `[hotels.manage]`, kalıcı sil sadece `user.permissions`
+`PERMISSIONS.HotelsDelete` içeriyorsa görünür + `ConfirmDialog` ister).
+"Geçmiş" sekmesi `useChangeHistory(hotelId)` ile rename/move kayıtlarını
+listeler, her satırda `RestoreIcon`'lu bir "Geri Al" (`useUndoChange`)
+butonu var. Yeni hook'lar (`src/features/folders/hooks.ts`): `useTrash`,
+`useChangeHistory` (`useQuery`, sırasıyla `["hotels", hotelId, "trash"]` /
+`["hotels", hotelId, "history"]` key'leri, ikisi de modal kapalıyken
+`enabled:false` — `useBrowseHotel`'in lazy-fetch deseniyle aynı), `useRestoreFolder`/
+`useRestoreFile`/`usePurgeFolder`/`usePurgeFile`/`useUndoChange` (mutation,
+hepsi rename/move hook'larıyla aynı geniş `["hotels", hotelId]` prefix
+invalidation'ını kullanıyor — bu prefix zaten `["hotels", hotelId, "trash"]`
+ve `["hotels", hotelId, "history"]`'yi de kapsıyor, React Query key eşleşmesi
+dizi-prefix bazlı). Yeni ikon: `RestoreIcon` (`IconGlyphs.tsx`, saat yönünün
+tersine dönen bir yay + ok ucu — dosyadaki border-circle/border-triangle
+tekniğiyle, ekstra ikon kütüphanesi yok). Yeni tipler
+(`src/features/hotels/types.ts`): `TrashedFolderDto`, `TrashedFileDto`,
+`TrashListDto`, `ChangeHistoryDto` — backend DTO'larıyla birebir (camelCase).
+4 dilde `trash.*` i18n anahtarları eklendi (`src/i18n/translations.ts`).
+**Move geçmişinde hedef klasör adı GÖSTERİLMİYOR** (kasıtlı — backend bunu
+çözmüyor, sadece "taşındı" + kim/ne zaman; kapsam dar tutuldu).
+
+**Kural**: Bundan sonra `Folder`/`MediaFile` üzerinde yeni bir "silme" yolu
+eklerseniz (örn. toplu silme, farklı bir controller) mutlaka `DeleteAsync`
+(soft) ile `PurgeAsync` (hard) ayrımına uyun — hiçbir yeni kod satırı
+`db.Folders.Remove(...)`/`db.MediaFiles.Remove(...)` çağırmasın, sadece
+`FolderService.PurgeAsync`/`FileService.PurgeAsync` bunu yapmalı (aksi halde
+o silme yolu Çöp Kutusu'nu bypass eder, kullanıcı yine geri alamaz).
+
+**`B2B.Database` tarafı**: `Folders.sql`/`Files.sql`'e aynı 3 kolon
+(`IsDeleted`/`DeletedAt`/`DeletedById`, `CreatedById`/`UploadedById` ile aynı
+Users FK + index deseni) + yeni `EntityChangeLogs.sql` (Hotels'e Cascade,
+Users'e Restrict FK) eklendi, `.sqlproj`'un `<ItemGroup>`'una (bu proje
+dosyaları wildcard değil, TEK TEK listeliyor) kayıt edildi. Bu turda hiç
+`RenameColumn` yok (sadece `AddColumn`/`CreateTable`), yani hemen üstteki
+2026-07-28 DROP+ADD veri kaybı tuzağı bu değişiklik için geçerli değil —
+EF migration'daki tip/nullable/default tanımlarıyla birebir karşılaştırılarak
+doğrulandı. Henüz dev DB'ye publish EDİLMEDİ (bölüm 1.3'teki kural gereği bu
+kullanıcının kendi VS build + `SqlPackage.exe`/Publish Database adımı).
+
+> **UYARI — bu turda fark edilen, bu değişiklikle İLGİSİZ ama aktif bir risk**:
+> `Folders.sql`'de `NameTr` şu an tekrar `NULL` (olması gereken `NOT NULL` —
+> bkz. yukarıdaki 2026-07-28 notu, bu kolon tam da bu yüzden `NOT NULL`'a
+> düzeltilmişti) ve kaldırılmış olması gereken eski `[Name]` kolonu hâlâ
+> dosyada duruyor; `Files.sql`'de de `SortOrder` satırı dosyanın geri kalanıyla
+> hizalı değil. Bu satırlar 2026-07-30 oturumu BAŞLAMADAN ÖNCE zaten
+> `git status`'ta değişiklik olarak görünüyordu (muhtemelen kullanıcının kendi
+> WIP'i) — bu oturumdaki hiçbir ajan bunlara dokunmadı. Bir sonraki dacpac
+> publish'inden ÖNCE bu iki dosya gözden geçirilmeli, yoksa 2026-07-28'deki
+> veri kaybı senaryosu (`NameTr NULL` + SSDT DROP+ADD) tekrar edebilir.
+
+## 5.3. Web-optimize görsel önizleme — yüksek çözünürlüklü resimlerin yavaş açılması (2026-07-31)
+
+Sebep: otel klasörlerindeki gerçek kamera/telefon fotoğrafları büyük/yüksek
+çözünürlüklü olduğu için `GET /files/{id}/view` (tam boyutlu orijinali stream
+eden uç, `ImagePreviewModal.tsx`'in büyütülmüş görsel için kullandığı) açılırken
+gözle görülür şekilde bekletiyordu. Çözüm **sadece `/view`'i** etkiler —
+`/download` her zaman gerçek orijinali döner, hiç dokunulmadı.
+
+**Tasarım kararı — görünür ama gizlenmiş bir alt klasör + orijinal üzerinde
+self-reference FK, dosya adı eşleştirmesi YOK:** Kullanıcı literal olarak "aynı
+klasör içinde yeni bir klasör oluştur" istedi. Bunu gerçek bir `Folder` +
+gerçek `MediaFile` satırları olarak uyguladık, ama `Folder.IsSystemGenerated`
+(yeni `bool`, varsayılan `false`) bayrağıyla: `FolderService.BrowseHotelAsync`
+bu klasörleri hem klasör listesinden filtreliyor hem `folderId` ile doğrudan
+içine girilmeye çalışılırsa (tahmin edilmiş/sızmış id) `NotFound` atıyor —
+yani bu klasör admin/müşteri arayüzünde HİÇBİR ZAMAN görünmüyor/gezilemiyor.
+Eşleştirme dosya adına göre DEĞİL, yeni `MediaFile.WebOptimizedFileId`
+(nullable, self-reference, **FK constraint YOK** — `EntityChangeLog.EntityId`
+ile aynı emsal, bkz. bölüm 5.2) ile: orijinal satır kendi web-optimize
+kopyasının id'sini tutuyor. `FilesController.View` artık
+`FileService.ResolveViewFileAsync(file)` çağırıp `WebOptimizedFileId` doluysa
+(ve hedef satır/fiziksel dosya hâlâ mevcutsa) o kopyanın path'ini döndürüyor —
+**`ImagePreviewModal.tsx`/`downloadFile.viewFileUrl()` hiç değişmedi**, aynı
+URL'i çağırıyor, sunucu tarafında şeffaf bir substitution.
+
+**Neden gizli-klasör + FK (dosya adı eşleştirmesi değil)**: rename orijinali
+kırar, ayrı bir `Folder` olması `FolderService`'in zaten var olan Path-prefix
+tabanlı soft-delete/restore/purge cascade'ini (bkz. 5.2) SIFIR ek kod ile
+kopyalara da uyguluyor — kopya klasörü her zaman orijinalin O ANKİ üst
+klasörünün DOĞRUDAN çocuğu (bkz. aşağıdaki invaryant), bu yüzden üst klasör
+silinince/geri yüklenince kopyalar da otomatik sürükleniyor.
+
+**Boyut/kalite**: 1920px genişlik (400px'lik browse-grid thumbnail'inden
+büyük — bu tam-ekran önizleme için, grid için değil), JPEG q85, aspect-ratio
+korunuyor/hiç upscale yok — mevcut `GenerateThumbnailAsync`'in birebir aynı
+deseni (`FileService.cs`, `WebOptimizedWidth`/`WebOptimizedJpegQuality`
+sabitleri).
+
+**Yeni yüklemeler otomatik, buton sadece backfill için**: `SaveUploadedFilesAsync`
+artık `Kind == Image` için thumbnail'in yanında web-optimize kopyayı da
+otomatik üretiyor (best-effort — thumbnail'in aksine başarısızlık yüklemeyi
+İPTAL ETMİYOR, sadece o görsel `/view`'de orijinale düşüyor). Admin panelindeki
+**"Web sürümü oluştur"** butonu (`AdminFolderToolbar.tsx`, `Çöp Kutusu`
+butonunun yanında) sadece bu özellikten ÖNCE yüklenmiş görselleri backfill
+ediyor — `FileService.GenerateWebOptimizedForFolderAsync(hotelId, folderId,
+userId)`, `POST /api/files/generate-web-optimized` (`[hotels.manage]`),
+sadece o klasördeki (recursive DEĞİL, mevcut lazy tek-seviye browse deseniyle
+tutarlı) `WebOptimizedFileId == null` olan görselleri işliyor — buton tekrar
+tekrar basılabilir, zaten işlenmiş görseller atlanıyor (ucuz no-op catch-up).
+Tek bozuk/decode edilemeyen görsel batch'in tamamını durdurmuyor, `Failed`
+sayacına yazılıyor. Sonuç `{totalImages, processed, alreadyOptimized, failed}`
+frontend'de `useToast` ile tek satır özet olarak gösteriliyor
+(`webOptimize.*` i18n anahtarları, 4 dil).
+
+**Invaryant — kopya HER ZAMAN orijinalin güncel üst klasörünün gizli çocuğunda
+yaşar**: `FileService.MoveAsync`/`MoveManyAsync` bir orijinali taşırken
+`WebOptimizedFileId` doluysa kopyayı da HEDEF klasörün gizli alt klasörüne
+taşıyor (`RelocateLinkedWebOptimizedCopyAsync`) — bu olmasa Path-prefix
+cascade invaryantı bozulurdu (kopya eski üst klasörün altında kalır, o klasör
+silinince orijinal etkilenmeden kopya çöpe düşerdi). Aynı şekilde
+`DeleteAsync`/`DeleteManyAsync`/`RestoreAsync`/`PurgeAsync` (File, tekil/toplu)
+kopyayı orijinalle birlikte soft-delete/restore/hard-delete ediyor
+(`SoftDeleteLinkedWebOptimizedCopyAsync`/`RestoreLinkedWebOptimizedCopyAsync`,
+`PurgeAsync` kopyayı `IsDeleted` durumuna bakmaksızın koşulsuz siliyor) — yoksa
+hem disk sızıntısı olur hem `FileService.ListTrashAsync`/`FolderService.
+ListTrashAsync`'e (ikisi de artık `IsSystemGenerated`'i filtreliyor) kopyalar
+kendi başına kafa karıştırıcı bir çöp kutusu satırı olarak sızardı.
+`ZipService.ResolveEntriesAsync` de hem `fileIds` hem `folderId` (+
+`includeSubfolders`) yollarında `IsSystemGenerated` filtreliyor — recursive
+"klasörü indir" gizli alt klasöre inip düşük çözünürlüklü kopyaları asıl
+dosyaların yanına bir daha eklemesin diye.
+
+**Şema**: `Folder.IsSystemGenerated` (`bool`, `NOT NULL DEFAULT 0`),
+`MediaFile.WebOptimizedFileId` (`int?`, FK YOK). Migration:
+`B2B.API/Migrations/20260731120000_AddWebOptimizedImages.cs` (+ `.Designer.cs`,
++ `AppDbContextModelSnapshot.cs` güncellendi) — sadece `AddColumn`, hiç
+`RenameColumn` yok, bu yüzden 2026-07-28'deki SSDT DROP+ADD veri kaybı sınıfı
+bu değişiklik için geçerli değil. `B2B.Database/Tables/Folders.sql`/`Files.sql`
+aynı iki kolonla senkronize edildi. **Henüz dev DB'ye publish EDİLMEDİ** —
+bölüm 1.3'teki kural gereği bu kullanıcının kendi VS build +
+`SqlPackage.exe`/Publish Database adımı; o adım atlanırsa hem "Web sürümü
+oluştur" butonu hem yeni yüklemelerdeki otomatik web-kopya üretimi
+`WebOptimizedFileId`/`IsSystemGenerated` kolonları DB'de yok diye 500 verir.

@@ -1,6 +1,7 @@
 import { Image, ScrollView, View } from "react-native";
 import { Link } from "expo-router";
 import { Card } from "../../src/components/ui/Card";
+import { CameraIcon } from "../../src/components/ui/IconGlyphs";
 import { Heading, Muted, SectionTitle, Body } from "../../src/components/ui/Typography";
 import { hotelLogoUrl, useHotels } from "../../src/features/hotels/hooks";
 import { useLanguage } from "../../src/i18n/LanguageContext";
@@ -15,7 +16,7 @@ const GUTTER = 12; // half of the 24px visual gap on each side of a card
 
 export default function PublicIndex() {
   const { data: hotels, isLoading } = useHotels();
-  const columns = useGridColumns();
+  const [columns, onGridLayout] = useGridColumns();
   const { t } = useLanguage();
 
   return (
@@ -29,7 +30,7 @@ export default function PublicIndex() {
       {isLoading ? (
         <Muted>{t("common.loading")}</Muted>
       ) : (
-        <View className="flex-row flex-wrap" style={{ marginHorizontal: -GUTTER }}>
+        <View className="flex-row flex-wrap" style={{ marginHorizontal: -GUTTER }} onLayout={onGridLayout}>
           {hotels?.map((hotel) => (
             <View key={hotel.id} style={{ width: `${100 / columns}%`, padding: GUTTER }}>
               <Link href={{ pathname: "/hotel/[hotelId]", params: { hotelId: String(hotel.id) } }}>
@@ -42,6 +43,12 @@ export default function PublicIndex() {
                     )}
                   </View>
                 </Card>
+                {hotel.photoCount > 0 ? (
+                  <View className="flex-row items-center justify-center gap-1 mt-2">
+                    <CameraIcon />
+                    <Muted>{t("hotelList.photoCount", { count: hotel.photoCount })}</Muted>
+                  </View>
+                ) : null}
               </Link>
             </View>
           ))}

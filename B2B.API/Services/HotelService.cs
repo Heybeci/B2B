@@ -8,15 +8,36 @@ namespace B2B.API.Services;
 
 public class HotelService(AppDbContext db, StorageService storage)
 {
-    private static HotelDto ToDto(Hotel h) => new(
+    private static HotelDto ToDto(Hotel h, int photoCount) => new(
         h.Id,
         h.Name,
         h.Slug,
         h.Description,
         h.IsPublished,
         h.SortOrder,
-        h.LogoFile is null ? null : new LogoFileDto(h.LogoFile.Id, h.LogoFile.StoredFileName, h.LogoFile.MimeType)
+        h.LogoFile is null ? null : new LogoFileDto(h.LogoFile.Id, h.LogoFile.StoredFileName, h.LogoFile.MimeType),
+        photoCount
     );
+
+    // Excludes images living in a hidden web-optimized-copy folder (see
+    // Folder.IsSystemGenerated) — those are duplicates of another image, and
+    // counting them would roughly double the number shown to the user.
+    private IQueryable<MediaFile> PhotoQuery() => db.Files.Where(f =>
+        f.Kind == FileKind.Image && !f.IsDeleted
+        && (f.FolderId == null || !f.Folder!.IsSystemGenerated));
+
+    private async Task<Dictionary<int, int>> PhotoCountsAsync(List<Hotel> hotels)
+    {
+        var hotelIds = hotels.Select(h => h.Id).ToList();
+        return await PhotoQuery()
+            .Where(f => hotelIds.Contains(f.HotelId))
+            .GroupBy(f => f.HotelId)
+            .Select(g => new { HotelId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.HotelId, x => x.Count);
+    }
+
+    private Task<int> PhotoCountAsync(int hotelId) =>
+        PhotoQuery().CountAsync(f => f.HotelId == hotelId);
 
     private async Task<string> UniqueSlugAsync(string name, int? excludeId = null)
     {
@@ -36,7 +57,8 @@ public class HotelService(AppDbContext db, StorageService storage)
             .Where(h => h.IsPublished)
             .OrderBy(h => h.SortOrder).ThenBy(h => h.Name)
             .ToListAsync();
-        return [.. hotels.Select(ToDto)];
+        var counts = await PhotoCountsAsync(hotels);
+        return [.. hotels.Select(h => ToDto(h, counts.GetValueOrDefault(h.Id)))];
     }
 
     public async Task<List<HotelDto>> ListAllAsync()
@@ -44,7 +66,8 @@ public class HotelService(AppDbContext db, StorageService storage)
         var hotels = await db.Hotels.Include(h => h.LogoFile)
             .OrderBy(h => h.SortOrder).ThenBy(h => h.Name)
             .ToListAsync();
-        return [.. hotels.Select(ToDto)];
+        var counts = await PhotoCountsAsync(hotels);
+        return [.. hotels.Select(h => ToDto(h, counts.GetValueOrDefault(h.Id)))];
     }
 
     public async Task<Hotel> GetEntityAsync(int id, bool requirePublished = false)
@@ -57,7 +80,11 @@ public class HotelService(AppDbContext db, StorageService storage)
         return hotel;
     }
 
-    public async Task<HotelDto> GetAsync(int id, bool requirePublished = false) => ToDto(await GetEntityAsync(id, requirePublished));
+    public async Task<HotelDto> GetAsync(int id, bool requirePublished = false)
+    {
+        var hotel = await GetEntityAsync(id, requirePublished);
+        return ToDto(hotel, await PhotoCountAsync(id));
+    }
 
     private async Task<MediaFile> SaveLogoFileAsync(int hotelId, int userId, IFormFile file)
     {
@@ -158,6 +185,32 @@ public class HotelService(AppDbContext db, StorageService storage)
                 var path = storage.AbsoluteFilePath(id, previous.StoredFileName);
                 if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
             }
+        }
+
+        return await GetAsync(id);
+    }
+
+    public async Task<HotelDto> RemoveLogoAsync(int id)
+    {
+        var hotel = await GetEntityAsync(id);
+
+        // Idempotent: if no logo, just return current state
+        if (hotel.LogoFileId is null)
+        {
+            return await GetAsync(id);
+        }
+
+        var previousLogoId = hotel.LogoFileId;
+        hotel.LogoFileId = null;
+        await db.SaveChangesAsync();
+
+        var previous = await db.Files.FindAsync(previousLogoId.Value);
+        if (previous is not null)
+        {
+            db.Files.Remove(previous);
+            await db.SaveChangesAsync();
+            var path = storage.AbsoluteFilePath(id, previous.StoredFileName);
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
         }
 
         return await GetAsync(id);

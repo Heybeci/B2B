@@ -3,12 +3,13 @@ import { Image, Modal, Pressable, Switch, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Input } from "../../components/ui/Input";
 import { Muted, SectionTitle } from "../../components/ui/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { apiClient } from "../../lib/api/client";
 import { appendFileToFormData } from "../../lib/upload/appendFile";
-import { hotelLogoUrl, useHotel, useUpdateHotel } from "./hooks";
+import { hotelLogoUrl, useHotel, useRemoveHotelLogo, useUpdateHotel } from "./hooks";
 
 interface EditHotelModalProps {
   // null = closed. Kept as a single prop (rather than a separate `visible`
@@ -27,12 +28,14 @@ export function EditHotelModal({ hotelId, onClose, canPublish }: EditHotelModalP
   const { t } = useLanguage();
   const { data: hotel } = useHotel(hotelId ?? undefined);
   const updateHotel = useUpdateHotel(hotelId ?? 0);
+  const removeLogo = useRemoveHotelLogo(hotelId ?? 0);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isPublished, setIsPublished] = useState(true);
   const [sortOrder, setSortOrder] = useState("0");
   const [logoUploading, setLogoUploading] = useState(false);
+  const [removeLogoDialogVisible, setRemoveLogoDialogVisible] = useState(false);
 
   useEffect(() => {
     if (hotel) {
@@ -71,8 +74,17 @@ export function EditHotelModal({ hotelId, onClose, canPublish }: EditHotelModalP
     }
   };
 
+  const confirmRemoveLogo = () => {
+    removeLogo.mutate(undefined, {
+      onSuccess: () => {
+        setRemoveLogoDialogVisible(false);
+      },
+    });
+  };
+
   return (
-    <Modal visible={hotelId !== null} transparent animationType="fade" onRequestClose={onClose}>
+    <>
+      <Modal visible={hotelId !== null} transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/50 px-4">
         {!hotel ? (
           <Card className="p-6">
@@ -96,7 +108,17 @@ export function EditHotelModal({ hotelId, onClose, canPublish }: EditHotelModalP
                     <Muted className="text-ink-500 text-[10px]">{t("editHotel.noLogo")}</Muted>
                   )}
                 </View>
-                <Button label={t("editHotel.changeLogo")} variant="secondary" loading={logoUploading} onPress={replaceLogo} />
+                <View className="gap-2 w-full">
+                  <Button label={t("editHotel.changeLogo")} variant="secondary" loading={logoUploading} onPress={replaceLogo} />
+                  {hotelLogoUrl(hotel) ? (
+                    <Button
+                      label={t("editHotel.removeLogo")}
+                      variant="ghost"
+                      loading={removeLogo.isPending}
+                      onPress={() => setRemoveLogoDialogVisible(true)}
+                    />
+                  ) : null}
+                </View>
               </View>
               <View className="flex-1 gap-3">
                 <Input label={t("editHotel.name")} value={name} onChangeText={setName} />
@@ -125,5 +147,17 @@ export function EditHotelModal({ hotelId, onClose, canPublish }: EditHotelModalP
         )}
       </View>
     </Modal>
+
+    <ConfirmDialog
+      visible={removeLogoDialogVisible}
+      title={t("editHotel.removeLogoTitle")}
+      message={t("editHotel.removeLogoConfirm")}
+      confirmLabel={t("common.delete")}
+      cancelLabel={t("common.cancel")}
+      loading={removeLogo.isPending}
+      onCancel={() => setRemoveLogoDialogVisible(false)}
+      onConfirm={confirmRemoveLogo}
+    />
+  </>
   );
 }

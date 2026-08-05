@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -27,29 +28,58 @@ export function FolderPickerModal({
   title,
   hotelId,
   excludeFolderId,
-  onSelect,
+  onSelect: onConfirm,
   onCancel,
   loading,
   error,
 }: FolderPickerModalProps) {
   const { t } = useLanguage();
+  const [pendingId, setPendingId] = useState<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!visible) {
+      setPendingId(undefined);
+    }
+  }, [visible]);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View className="flex-1 items-center justify-center bg-black/40 px-4">
         <Card className="p-5 gap-4 max-w-sm w-full">
           <SectionTitle>{title}</SectionTitle>
-          <ScrollView className="max-h-72" contentContainerClassName="gap-2">
-            <FolderPickerTree
-              hotelId={hotelId}
-              excludeFolderId={excludeFolderId}
-              disabled={loading}
-              onSelect={onSelect}
-            />
-          </ScrollView>
+          <View className="relative">
+            <ScrollView className="max-h-72" contentContainerClassName="gap-2">
+              <FolderPickerTree
+                hotelId={hotelId}
+                excludeFolderId={excludeFolderId}
+                disabled={loading}
+                selectedFolderId={pendingId}
+                onSelect={setPendingId}
+              />
+            </ScrollView>
+            {loading ? (
+              <View className="absolute inset-0 bg-white/60 items-center justify-center rounded-lg" />
+            ) : null}
+          </View>
           {error ? <Muted className="text-red-600">{error}</Muted> : null}
           <View className="flex-row gap-2 justify-end items-center">
-            {loading ? <ActivityIndicator size="small" color="#B8903F" /> : null}
+            {loading ? (
+              <View className="flex-row items-center gap-2">
+                <ActivityIndicator size="small" color="#B8903F" />
+                <Muted className="text-sm">{t("folder.moving")}</Muted>
+              </View>
+            ) : null}
             <Button label={t("common.cancel")} variant="ghost" onPress={onCancel} disabled={loading} />
+            <Button
+              label={t("common.ok")}
+              variant="primary"
+              onPress={() => {
+                if (pendingId !== undefined) {
+                  onConfirm(pendingId);
+                }
+              }}
+              disabled={pendingId === undefined || loading}
+            />
           </View>
         </Card>
       </View>

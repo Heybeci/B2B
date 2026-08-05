@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { Image, type LayoutChangeEvent, ScrollView, View } from "react-native";
+import { Image, type LayoutChangeEvent, Pressable, ScrollView, View } from "react-native";
 import { Link } from "expo-router";
+import { NavArrowIcon } from "../../components/ui/IconGlyphs";
 import { Card } from "../../components/ui/Card";
+import { Tooltip } from "../../components/ui/Tooltip";
 import { Body, Muted } from "../../components/ui/Typography";
+import { useLanguage } from "../../i18n/LanguageContext";
 import { ACTIVE_GLOW, BADGE_SHADOW, ROW_SHADOW } from "../../theme/glass";
 import { hotelLogoUrl } from "./hooks";
 import type { HotelDto } from "./types";
@@ -57,16 +60,38 @@ function HotelRow({
         active ? ACTIVE_GLOW : null,
       ]}
     >
-      <View className="w-11 h-11 rounded-lg overflow-hidden bg-white shrink-0" style={BADGE_SHADOW}>
+      <View className="w-14 h-14 rounded-lg overflow-hidden bg-white shrink-0" style={BADGE_SHADOW}>
         <LogoImage hotel={hotel} />
       </View>
       <Body
         numberOfLines={1}
-        className={`max-w-[170px] ${active ? "text-ink-900 font-semibold" : "text-ink-700"}`}
+        className={`max-w-[158px] ${active ? "text-ink-900 font-semibold" : "text-ink-700"}`}
       >
         {hotel.name}
       </Body>
     </Card>
+  );
+}
+
+// Collapsed rail: logo only, same size as the expanded row's (now bigger)
+// logo tile — only the name disappears, per the "otel isimleri kalsın" ask
+// (the name isn't removed from the app, just not shown while collapsed).
+// It resurfaces on hover via Tooltip, same affordance every other icon-only
+// control in the app uses.
+function HotelRailItem({ hotel, active }: { hotel: HotelDto; active: boolean }) {
+  return (
+    <Tooltip label={hotel.name}>
+      <View
+        className="w-14 h-14 rounded-lg overflow-hidden bg-white"
+        style={[
+          BADGE_SHADOW,
+          active ? { borderColor: "#B8903F", borderWidth: 2 } : null,
+          active ? ACTIVE_GLOW : null,
+        ]}
+      >
+        <LogoImage hotel={hotel} />
+      </View>
+    </Tooltip>
   );
 }
 
@@ -91,6 +116,7 @@ function HotelPill({ hotel, active }: { hotel: HotelDto; active: boolean }) {
 }
 
 export function HotelPanel({ hotels, selectedHotelId }: HotelPanelProps) {
+  const { t } = useLanguage();
   // Each row first renders at its own natural (shrink-to-fit) width so we can
   // measure it, then every row is pinned to the widest one measured so far —
   // same uniform width for all, sized off whichever hotel name is longest,
@@ -104,19 +130,49 @@ export function HotelPanel({ hotels, selectedHotelId }: HotelPanelProps) {
     setRowWidths((prev) => (prev[hotelId] === width ? prev : { ...prev, [hotelId]: width }));
   };
 
+  // Always starts collapsed per product requirement — user can toggle during the
+  // session but the sidebar resets to collapsed on page reload.
+  const [collapsed, setCollapsed] = useState(true);
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => !prev);
+  };
+
   return (
     <>
-      {/* Wide screens: fixed left sidebar, one row per hotel, scrolls if the list overflows */}
-      <View className="hidden lg:flex lg:w-64 lg:border-r lg:border-ink-900/10">
-        <ScrollView contentContainerClassName="p-4 gap-3 items-start">
+      {/* Wide screens: fixed left sidebar, one row per hotel, scrolls if the
+          list overflows. Collapses to a narrow icon-only rail (names still
+          exist, just hidden — see HotelRailItem) via the toggle below. */}
+      <View
+        className={`hidden lg:flex lg:flex-col lg:border-r lg:border-ink-900/10 ${
+          collapsed ? "lg:w-24" : "lg:w-64"
+        }`}
+      >
+        <View className="flex-row items-center justify-end px-3 pt-3">
+          <Tooltip label={collapsed ? t("hotelPanel.expand") : t("hotelPanel.collapse")}>
+            <Pressable
+              onPress={toggleCollapsed}
+              className="w-7 h-7 rounded-full bg-white items-center justify-center border border-ink-900/15"
+              style={ROW_SHADOW}
+            >
+              <NavArrowIcon direction={collapsed ? "right" : "left"} color="#3A342B" />
+            </Pressable>
+          </Tooltip>
+        </View>
+        <ScrollView
+          contentContainerClassName={collapsed ? "p-3 gap-3 items-center" : "p-4 gap-3 items-start"}
+        >
           {hotels.map((hotel) => (
             <Link key={hotel.id} href={{ pathname: "/hotel/[hotelId]", params: { hotelId: String(hotel.id) } }}>
-              <HotelRow
-                hotel={hotel}
-                active={hotel.id === selectedHotelId}
-                width={maxRowWidth}
-                onLayout={handleRowLayout(hotel.id)}
-              />
+              {collapsed ? (
+                <HotelRailItem hotel={hotel} active={hotel.id === selectedHotelId} />
+              ) : (
+                <HotelRow
+                  hotel={hotel}
+                  active={hotel.id === selectedHotelId}
+                  width={maxRowWidth}
+                  onLayout={handleRowLayout(hotel.id)}
+                />
+              )}
             </Link>
           ))}
         </ScrollView>

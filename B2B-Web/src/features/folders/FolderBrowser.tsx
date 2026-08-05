@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { DownloadIcon, EyeIcon, MoveIcon, PencilIcon } from "../../components/ui/IconGlyphs";
+import { DownloadIcon, DragHandleIcon, EyeIcon, MoveIcon, PencilIcon } from "../../components/ui/IconGlyphs";
 import { PromptDialog } from "../../components/ui/PromptDialog";
 import { Tooltip } from "../../components/ui/Tooltip";
 import { Muted, SectionTitle } from "../../components/ui/Typography";
@@ -9,6 +9,7 @@ import { Card } from "../../components/ui/Card";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { ROW_SHADOW } from "../../theme/glass";
 import * as downloadFile from "../../lib/download/downloadFile";
+import { useDragReorder } from "../../lib/dnd/useDragReorder";
 import { fileTypeLabel, formatFileSize } from "../../lib/format";
 import { useGridColumns } from "../../lib/useGridColumns";
 import { useBrowseHotel } from "../hotels/hooks";
@@ -17,7 +18,15 @@ import { FileThumbnail } from "./FileThumbnail";
 import { resolveFolderName } from "./folderName";
 import { FolderPickerModal } from "./FolderPickerModal";
 import { FolderTree } from "./FolderTree";
-import { useBulkDeleteFiles, useDeleteFile, useMoveFile, useRenameFile } from "./hooks";
+import { ImagePreviewModal } from "./ImagePreviewModal";
+import {
+  useBulkDeleteFiles,
+  useBulkMoveFiles,
+  useDeleteFile,
+  useMoveFile,
+  useRenameFile,
+  useReorderFiles,
+} from "./hooks";
 import { MultiSelectToolbar } from "./MultiSelectToolbar";
 import { treePanelWidth } from "./treePanelWidth";
 
@@ -89,8 +98,30 @@ function splitExtension(name: string): { base: string; ext: string } {
   return { base: name.slice(0, dot), ext: name.slice(dot) };
 }
 
-function GridSlot({ columns, children }: { columns: number; children: React.ReactNode }) {
-  return <View style={{ width: `${100 / columns}%`, padding: GUTTER }}>{children}</View>;
+function GridSlot({
+  columns,
+  children,
+  itemRef,
+  dragging,
+}: {
+  columns: number;
+  children: React.ReactNode;
+  // Ref for the drag-reorder hook to measure this tile's on-screen position
+  // against the pointer — see useDragReorder's "grid" layout mode.
+  itemRef?: (node: View | null) => void;
+  dragging?: boolean;
+}) {
+  return (
+    <View
+      ref={itemRef}
+      // Dimmed to read as an empty "hole" left behind by the tile that's now
+      // floating under the cursor (see useDragReorder's ghost clone) — it
+      // still slides via the shared FLIP animation like any sibling.
+      style={{ width: `${100 / columns}%`, padding: GUTTER, opacity: dragging ? 0.3 : 1 }}
+    >
+      {children}
+    </View>
+  );
 }
 
 function FileCard({
@@ -104,6 +135,7 @@ function FileCard({
   onDelete,
   onRename,
   onMove,
+  dragHandleRef,
 }: {
   file: FileDto;
   selectMode: boolean;
@@ -115,6 +147,7 @@ function FileCard({
   onDelete?: () => void;
   onRename?: () => void;
   onMove?: () => void;
+  dragHandleRef?: (node: View | null) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -144,13 +177,49 @@ function FileCard({
                   <EyeIcon />
                 </ActionIconButton>
               </Tooltip>
-              <Tooltip label={t("folder.download")}>
-                <ActionIconButton onPress={onDownload}>
-                  <DownloadIcon />
-                </ActionIconButton>
-              </Tooltip>
+              {/* Admin manages content rather than consuming it — download stays
+                  public-only, same reasoning as the folder tree's showDownload. */}
+              {!isAdmin ? (
+                <Tooltip label={t("folder.download")}>
+                  <ActionIconButton onPress={onDownload}>
+                    <DownloadIcon />
+                  </ActionIconButton>
+                </Tooltip>
+              ) : null}
             </View>
           )}
+          {isAdmin && !selectMode && dragHandleRef ? (
+            // The "absolute top-2 left-2" positioning MUST live on this outer
+            // wrapper, not on the View passed as Tooltip's child (which is
+            // where it lived before this fix). Tooltip's own wrapper View
+            // (Tooltip.web.tsx) has no layout styling of its own beyond
+            // `cursor: pointer` — react-native-web's base View reset makes
+            // it `position: relative` by default, so it becomes the
+            // containing block for an `absolute` child placed directly
+            // inside it, instead of this "aspect-square" image container.
+            // Since every OTHER child here (thumbnail, view/download icons,
+            // rename/move/delete) is itself `position: absolute` and only
+            // the Tooltip wrapper was a normal-flow item, that one in-flow
+            // child ended up pushed to the bottom of the image square by
+            // flex layout — landing on top of the file-name label below it,
+            // both visually and in DOM hit-testing order, so clicks at the
+            // visually-documented top-left handle position never reached
+            // the real (mispositioned) handle element. Wrapping the
+            // Tooltip in its own absolutely-positioned parent — the same
+            // shape already used for the rename/move/delete cluster below —
+            // fixes the placement without changing Tooltip.web.tsx itself
+            // (a shared component used correctly by every other consumer).
+            <View className="absolute top-2 left-2">
+              <Tooltip label={t("common.dragToReorder")}>
+                <View
+                  ref={dragHandleRef}
+                  className="w-6 h-6 rounded-full bg-white/90 items-center justify-center"
+                >
+                  <DragHandleIcon color="#3A342B" />
+                </View>
+              </Tooltip>
+            </View>
+          ) : null}
           {isAdmin && !selectMode ? (
             <View className="absolute top-2 right-2 flex-row gap-1.5">
               <Tooltip label={t("common.rename")}>
@@ -199,8 +268,8 @@ function FileCard({
         </Muted>
         {!selectMode ? (
           <View className="flex-row gap-2 mt-0.5">
-            <ActionTextButton onPress={onView} label={t("folder.view")} />
-            <ActionTextButton onPress={onDownload} label={t("folder.download")} primary />
+            <ActionTextButton onPress={onView} label={t("folder.view")} primary={isAdmin} />
+            {!isAdmin ? <ActionTextButton onPress={onDownload} label={t("folder.download")} primary /> : null}
           </View>
         ) : null}
       </View>
@@ -213,6 +282,10 @@ interface FolderBrowserProps {
   folderId: number | null;
   onNavigate: (folderId: number | null) => void;
   adminToolbar?: React.ReactNode;
+  // Admin-only action buttons (new folder / web-optimize / trash / delete
+  // this folder) — rendered next to the "Seç" select-mode toggle in the
+  // header row, not inside the dropzone (adminToolbar, rendered lower).
+  adminActions?: React.ReactNode;
   isAdmin?: boolean;
   // Rendered right after the title/toolbar row (e.g. the admin page's
   // published/draft status) — kept as a slot rather than baked in, since
@@ -232,6 +305,7 @@ export function FolderBrowser({
   folderId,
   onNavigate,
   adminToolbar,
+  adminActions,
   isAdmin,
   belowHeaderContent,
   boundedHeight = false,
@@ -240,17 +314,21 @@ export function FolderBrowser({
   const { data, isLoading, isError } = useBrowseHotel(hotelId, folderId);
   const deleteFile = useDeleteFile(hotelId, folderId);
   const bulkDeleteFiles = useBulkDeleteFiles(hotelId, folderId);
+  const bulkMoveFiles = useBulkMoveFiles(hotelId);
   const renameFile = useRenameFile(hotelId);
   const moveFile = useMoveFile(hotelId);
+  const reorderFiles = useReorderFiles(hotelId, folderId);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<FileDto | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [pendingBulkMove, setPendingBulkMove] = useState(false);
   const [pendingRenameFile, setPendingRenameFile] = useState<FileDto | null>(null);
   const [pendingMoveFile, setPendingMoveFile] = useState<FileDto | null>(null);
-  const columns = useGridColumns();
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [columns, onGridLayout] = useGridColumns();
 
   // --- Resizable tree panel (web + desktop only) ---------------------------
   // Same 1024px threshold as Tailwind's `lg:` — resizing only makes sense in
@@ -322,6 +400,19 @@ export function FolderBrowser({
   const renameParts = pendingRenameFile ? splitExtension(pendingRenameFile.originalName) : null;
 
   const files = data?.files ?? [];
+  // Navigable set for the image preview slider — image-kind files only, in
+  // the same order the grid shows them.
+  const imageFiles = files.filter((f) => f.kind === "image");
+  // Grid layout (not "list"): the file grid wraps left-to-right/top-to-bottom,
+  // so target position while dragging needs nearest-neighbor distance in
+  // both axes, not just Y (see useDragReorder's "grid" mode).
+  const filesDrag = useDragReorder({
+    items: files,
+    getId: (f) => f.id,
+    onReorder: (orderedIds) => reorderFiles.mutate(orderedIds),
+    layout: "grid",
+    enabled: !!isAdmin,
+  });
   const hasSubfolders = (data?.folders.length ?? 0) > 0;
   const ancestorIds = (data?.breadcrumb ?? []).map((crumb) => crumb.id);
   const currentLabel = data?.folder
@@ -380,15 +471,27 @@ export function FolderBrowser({
     ) : files.length === 0 ? (
       <Muted style={{ fontSize: 14.4, fontWeight: "600" }}>{t("folder.empty")}</Muted>
     ) : (
-      <View className="flex-row flex-wrap py-1" style={{ marginHorizontal: -GUTTER }}>
-        {files.map((file) => (
-          <GridSlot key={`file-${file.id}`} columns={columns}>
+      <View className="flex-row flex-wrap py-1" style={{ marginHorizontal: -GUTTER }} onLayout={onGridLayout}>
+        {filesDrag.items.map((file) => (
+          <GridSlot
+            key={`file-${file.id}`}
+            columns={columns}
+            itemRef={isAdmin ? filesDrag.getItemRef(file.id) : undefined}
+            dragging={filesDrag.draggingId === file.id}
+          >
             <FileCard
               file={file}
               selectMode={selectMode}
               selected={selected.has(file.id)}
               onToggleSelect={() => toggleSelect(file.id)}
-              onView={() => downloadFile.viewFile(file.id)}
+              onView={() => {
+                if (file.kind === "image") {
+                  const idx = imageFiles.findIndex((f) => f.id === file.id);
+                  setPreviewIndex(idx >= 0 ? idx : null);
+                } else {
+                  void downloadFile.viewFile(file.id);
+                }
+              }}
               onDownload={() => runDownload(() => downloadFile.downloadSingleFile(file.id, file.originalName))}
               isAdmin={isAdmin}
               onDelete={() => setPendingDeleteFile(file)}
@@ -400,6 +503,7 @@ export function FolderBrowser({
                 moveFile.reset();
                 setPendingMoveFile(file);
               }}
+              dragHandleRef={isAdmin ? filesDrag.getHandleRef(file.id) : undefined}
             />
           </GridSlot>
         ))}
@@ -439,27 +543,33 @@ export function FolderBrowser({
             stacked before. */}
         <View className="flex-row items-center justify-between gap-3 flex-wrap pb-3 border-b border-ink-900/10 mb-3">
           <SectionTitle className="shrink-0" style={{ fontSize: 14.4, fontWeight: "600" }}>{currentLabel}</SectionTitle>
-          {files.length > 0 ? (
-            <MultiSelectToolbar
-              selectMode={selectMode}
-              onToggleSelectMode={() => {
-                setSelectMode((v) => !v);
-                clearSelection();
-              }}
-              selectedCount={selected.size}
-              totalCount={files.length}
-              onSelectAll={selectAll}
-              onClearSelection={clearSelection}
-              onDownloadSelected={downloadSelected}
-              downloading={downloading}
-              onDeleteSelected={isAdmin ? () => setPendingBulkDelete(true) : undefined}
-              deleting={bulkDeleteFiles.isPending}
-              includeSubfolders={includeSubfolders}
-              onToggleIncludeSubfolders={setIncludeSubfolders}
-              onDownloadFolder={downloadFolder}
-              hasSubfolders={hasSubfolders}
-            />
-          ) : null}
+          <View className="flex-row items-center flex-wrap gap-3">
+            {files.length > 0 ? (
+              <MultiSelectToolbar
+                selectMode={selectMode}
+                onToggleSelectMode={() => {
+                  setSelectMode((v) => !v);
+                  clearSelection();
+                }}
+                selectedCount={selected.size}
+                totalCount={files.length}
+                onSelectAll={selectAll}
+                onClearSelection={clearSelection}
+                onDownloadSelected={downloadSelected}
+                downloading={downloading}
+                onMoveSelected={isAdmin ? () => setPendingBulkMove(true) : undefined}
+                moving={bulkMoveFiles.isPending}
+                onDeleteSelected={isAdmin ? () => setPendingBulkDelete(true) : undefined}
+                deleting={bulkDeleteFiles.isPending}
+                includeSubfolders={includeSubfolders}
+                onToggleIncludeSubfolders={setIncludeSubfolders}
+                onDownloadFolder={downloadFolder}
+                hasSubfolders={hasSubfolders}
+                showDownload={!isAdmin}
+              />
+            ) : null}
+            {adminActions}
+          </View>
         </View>
 
         {belowHeaderContent}
@@ -542,6 +652,34 @@ export function FolderBrowser({
             { onSuccess: () => setPendingMoveFile(null) },
           );
         }}
+      />
+
+      <FolderPickerModal
+        visible={pendingBulkMove}
+        title={t("folder.moveSelectedTitle")}
+        hotelId={hotelId}
+        loading={bulkMoveFiles.isPending}
+        error={bulkMoveFiles.isError ? t("folder.moveError") : null}
+        onCancel={() => setPendingBulkMove(false)}
+        onSelect={(targetFolderId) => {
+          bulkMoveFiles.mutate(
+            { fileIds: [...selected], folderId: targetFolderId },
+            {
+              onSuccess: () => {
+                setPendingBulkMove(false);
+                clearSelection();
+              },
+            },
+          );
+        }}
+      />
+
+      <ImagePreviewModal
+        visible={previewIndex !== null}
+        files={imageFiles}
+        activeIndex={previewIndex}
+        onNavigate={setPreviewIndex}
+        onClose={() => setPreviewIndex(null)}
       />
     </View>
   );

@@ -23,7 +23,19 @@ public static class FileTypeSniffer
             "video/mp4" => read >= 8 && header[4] == 0x66 && header[5] == 0x74 && header[6] == 0x79 && header[7] == 0x70,
             "video/quicktime" => read >= 8 && header[4] == 0x66 && header[5] == 0x74 && header[6] == 0x79 && header[7] == 0x70,
             "application/pdf" => header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46,
+            "application/postscript" or "application/illustrator" or "application/vnd.adobe.illustrator"
+                => IsIllustrator(header),
             _ => false,
         };
     }
+
+    /// <summary>
+    /// Illustrator files come in two real-world variants — PDF-compatible
+    /// (<c>%PDF</c>, the default since CS) and legacy EPS/PostScript
+    /// (<c>%!</c>) — and either one may arrive under any of the three
+    /// Illustrator MIME strings, so both signatures are accepted for all of them.
+    /// </summary>
+    private static bool IsIllustrator(byte[] header) =>
+        (header[0] == 0x25 && header[1] == 0x21)
+        || (header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46);
 }

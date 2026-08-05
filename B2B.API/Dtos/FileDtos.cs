@@ -29,6 +29,21 @@ public record BulkDeleteFilesRequest(
     [Required] List<int> FileIds
 );
 
+public record BulkMoveFilesRequest(
+    [Required] List<int> FileIds,
+    int? FolderId
+);
+
 public record RenameFileRequest([Required, MaxLength(260)] string OriginalName);
 
 public record MoveFileRequest(int? FolderId);
+
+public record ReorderFilesRequest([Required] int HotelId, int? FolderId, [Required] List<int> OrderedIds);
+
+public record GenerateWebOptimizedRequest([Required] int HotelId, int? FolderId);
+
+// TotalImages: images directly in the folder (before this run). Processed:
+// newly generated this run. AlreadyOptimized: had a copy before this run
+// started (subset of TotalImages, disjoint from Processed). Failed: could not
+// be decoded/resized and were skipped.
+public record GenerateWebOptimizedResultDto(int TotalImages, int Processed, int AlreadyOptimized, int Failed);

@@ -85,7 +85,9 @@ export function Tooltip({ label, children }: TooltipProps) {
         ? { top: rect.bottom + GAP }
         : { bottom: window.innerHeight - rect.top + GAP }),
       // Keep the label's left edge on-screen; it grows leftward from `right`.
-      maxWidth: Math.max(60, rect.right - 8),
+      // Cap at 280px so the label remains readable; if the control is very
+      // close to the right edge, shrink to fit.
+      maxWidth: Math.min(280, Math.max(60, rect.right - 8)),
     });
   };
 
@@ -128,7 +130,9 @@ export function Tooltip({ label, children }: TooltipProps) {
                 zIndex: 1000,
                 // Never steal the hover it's reporting on (would flicker).
                 pointerEvents: "none",
-                backgroundColor: "rgba(24,21,15,0.92)",
+                // ink.800 (#26221C) at 0.88 opacity — softer than pure ink.900,
+                // less harsh "black" appearance.
+                backgroundColor: "rgba(38, 34, 28, 0.88)",
                 borderRadius: 6,
                 padding: "4px 8px",
                 boxShadow: (BADGE_SHADOW as { boxShadow?: string }).boxShadow,
@@ -139,9 +143,11 @@ export function Tooltip({ label, children }: TooltipProps) {
                 // div would otherwise inherit whatever the page default is.
                 fontFamily:
                   "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-                whiteSpace: "nowrap",
+                // Allow text to wrap instead of truncating with ellipsis, so
+                // long hotel names remain fully visible across multiple lines.
+                whiteSpace: "normal",
                 overflow: "hidden",
-                textOverflow: "ellipsis",
+                overflowWrap: "break-word",
               }}
             >
               {label}

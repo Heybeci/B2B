@@ -3,7 +3,7 @@ CREATE TABLE [dbo].[Folders]
     [Id]             INT             NOT NULL IDENTITY,
     [HotelId]        INT             NOT NULL,
     [ParentFolderId] INT             NULL,
-    [Name]         NVARCHAR (200)  NOT NULL,
+    [Name]           NVARCHAR (200)  NULL,
     [NameTr]         NVARCHAR (200)  NULL,
     [NameEn]         NVARCHAR (200)  NULL,
     [NameDe]         NVARCHAR (200)  NULL,
@@ -13,14 +13,24 @@ CREATE TABLE [dbo].[Folders]
     [CreatedById]    INT             NOT NULL,
     [CreatedAt]      DATETIME2 (7)   NOT NULL,
     [UpdatedAt]      DATETIME2 (7)   NOT NULL,
+    [IsDeleted]      BIT             NOT NULL DEFAULT 0,
+    [DeletedAt]      DATETIME2 (7)   NULL,
+    [DeletedById]    INT             NULL,
+    -- Hidden per-folder child FileService creates on demand to hold
+    -- web-optimized image copies (see FileService.GetOrCreateWebOptimizedFolderAsync).
+    [IsSystemGenerated] BIT          NOT NULL DEFAULT 0,
     CONSTRAINT [PK_Folders] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [FK_Folders_Folders_ParentFolderId] FOREIGN KEY ([ParentFolderId]) REFERENCES [dbo].[Folders] ([Id]),
     CONSTRAINT [FK_Folders_Hotels_HotelId] FOREIGN KEY ([HotelId]) REFERENCES [dbo].[Hotels] ([Id]) ON DELETE CASCADE,
-    CONSTRAINT [FK_Folders_Users_CreatedById] FOREIGN KEY ([CreatedById]) REFERENCES [dbo].[Users] ([Id])
+    CONSTRAINT [FK_Folders_Users_CreatedById] FOREIGN KEY ([CreatedById]) REFERENCES [dbo].[Users] ([Id]),
+    CONSTRAINT [FK_Folders_Users_DeletedById] FOREIGN KEY ([DeletedById]) REFERENCES [dbo].[Users] ([Id])
 );
 GO
 
 CREATE INDEX [IX_Folders_CreatedById] ON [dbo].[Folders] ([CreatedById]);
+GO
+
+CREATE INDEX [IX_Folders_DeletedById] ON [dbo].[Folders] ([DeletedById]);
 GO
 
 CREATE INDEX [IX_Folders_HotelId_ParentFolderId] ON [dbo].[Folders] ([HotelId], [ParentFolderId]);

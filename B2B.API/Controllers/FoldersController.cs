@@ -15,15 +15,18 @@ public class FoldersController(FolderService folderService) : ControllerBase
         StatusCode(201, await folderService.CreateAsync(input, User.GetUserId()));
 
     [HttpPatch("{id:int}")]
-    public Task<FolderDto> Rename(int id, RenameFolderRequest input) => folderService.RenameAsync(id, input);
+    public Task<FolderDto> Rename(int id, RenameFolderRequest input) => folderService.RenameAsync(id, input, User.GetUserId());
 
     [HttpPatch("{id:int}/move")]
-    public Task<FolderDto> Move(int id, MoveFolderRequest input) => folderService.MoveAsync(id, input.NewParentFolderId);
+    public Task<FolderDto> Move(int id, MoveFolderRequest input) => folderService.MoveAsync(id, input.NewParentFolderId, User.GetUserId());
+
+    [HttpPatch("reorder")]
+    public Task Reorder(ReorderFoldersRequest input) => folderService.ReorderAsync(input.HotelId, input.ParentFolderId, input.OrderedIds);
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        await folderService.DeleteAsync(id);
+        await folderService.DeleteAsync(id, User.GetUserId());
         return NoContent();
     }
 }

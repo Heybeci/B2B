@@ -118,6 +118,21 @@ export function MoveIcon({ color = "#fff" }: { color?: string }) {
   );
 }
 
+// A 2x3 dot grid — the classic "grip"/drag-handle glyph, built the same
+// View-based dot construction as KebabIcon's three stacked dots.
+export function DragHandleIcon({ color = "#3A342B" }: { color?: string }) {
+  return (
+    <View style={{ width: 10, height: 14, justifyContent: "space-between" }}>
+      {[0, 1, 2].map((row) => (
+        <View key={row} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color }} />
+          <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color }} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function DownloadIcon({ color = "#fff" }: { color?: string }) {
   return (
     <View style={{ alignItems: "center" }}>
@@ -192,6 +207,93 @@ export function KebabIcon({ color = "#fff" }: { color?: string }) {
           }}
         />
       ))}
+    </View>
+  );
+}
+
+// A left/right pointing solid triangle — slider prev/next navigation, same
+// border-triangle construction as DownloadIcon/MoveIcon's arrowheads.
+export function NavArrowIcon({ direction, color = "#fff" }: { direction: "left" | "right"; color?: string }) {
+  const pointsRight = direction === "right";
+  return (
+    <View
+      style={{
+        width: 0,
+        height: 0,
+        borderTopWidth: 7,
+        borderBottomWidth: 7,
+        borderTopColor: "transparent",
+        borderBottomColor: "transparent",
+        borderLeftWidth: pointsRight ? 8 : 0,
+        borderRightWidth: pointsRight ? 0 : 8,
+        borderLeftColor: pointsRight ? color : "transparent",
+        borderRightColor: pointsRight ? "transparent" : color,
+      }}
+    />
+  );
+}
+
+// A counter-clockwise "undo/restore" arrow: a near-full circle built the same
+// border-circle way as EyeIcon (one side left transparent to open the ring),
+// rotated so the opening sits at the bottom-right, plus a small border-triangle
+// arrowhead (DownloadIcon/ChevronIcon's technique) at the ring's start so the
+// direction of travel reads as counter-clockwise.
+export function RestoreIcon({ color = "#3A342B" }: { color?: string }) {
+  return (
+    <View style={{ width: 14, height: 14, alignItems: "center", justifyContent: "center" }}>
+      <View
+        style={{
+          width: 11,
+          height: 11,
+          borderRadius: 999,
+          borderWidth: 1.5,
+          borderColor: color,
+          borderBottomColor: "transparent",
+          borderRightColor: "transparent",
+          transform: [{ rotate: "-25deg" }],
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 1,
+          width: 0,
+          height: 0,
+          borderLeftWidth: 3,
+          borderRightWidth: 3,
+          borderBottomWidth: 4,
+          borderLeftColor: "transparent",
+          borderRightColor: "transparent",
+          borderBottomColor: color,
+          transform: [{ rotate: "115deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
+// A minimal camera silhouette (viewfinder bump + body + lens), built the same
+// border-box/border-circle way as the other glyphs here — used next to the
+// per-hotel photo count on the hotel list cards.
+export function CameraIcon({ color = "#6B6252" }: { color?: string }) {
+  return (
+    <View style={{ width: 13, height: 11, alignItems: "center" }}>
+      <View style={{ width: 5, height: 2, backgroundColor: color, borderTopLeftRadius: 1, borderTopRightRadius: 1 }} />
+      <View
+        style={{
+          width: 13,
+          height: 9,
+          marginTop: -1,
+          borderRadius: 2,
+          borderWidth: 1.5,
+          borderColor: color,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <View style={{ width: 4.5, height: 4.5, borderRadius: 2.25, borderWidth: 1.2, borderColor: color }} />
+      </View>
     </View>
   );
 }

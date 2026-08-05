@@ -59,6 +59,10 @@ public class HotelsController(
         return await hotelService.ReplaceLogoAsync(id, User.GetUserId(), logo);
     }
 
+    [RequirePermission(Permissions.HotelsManage)]
+    [HttpDelete("{id:int}/logo")]
+    public Task<HotelDto> RemoveLogo(int id) => hotelService.RemoveLogoAsync(id);
+
     [RequirePermission(Permissions.HotelsDelete)]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)

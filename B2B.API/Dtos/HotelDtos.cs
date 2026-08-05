@@ -25,5 +25,6 @@ public record HotelDto(
     string? Description,
     bool IsPublished,
     int SortOrder,
-    LogoFileDto? LogoFile
+    LogoFileDto? LogoFile,
+    int PhotoCount
 );
